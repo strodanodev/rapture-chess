@@ -11,3 +11,4 @@ contracts/cache/
 
 # the relay key (scripts/relay-key.mjs): private
 .relay-key.json
+relay/logs/

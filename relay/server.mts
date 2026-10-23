@@ -30,7 +30,7 @@
  * Gauntlet config: gauntlets/rapture-chess.json (node.env: GAUNTLETS=rapture-chess.v2=<abs path>,…).
  */
 import { createHash, createHmac, createPrivateKey, createPublicKey, randomBytes, sign as edSign, timingSafeEqual, type KeyObject } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { createChessRules, type ChessState, concede, encodeClock, encodeControl, Op, type Side } from '../src/rules/chessRules';
@@ -63,7 +63,14 @@ const seats: Array<{ sub: string }> = env.GAUNTLET_SEATS ? JSON.parse(env.GAUNTL
 if (!DEV && (!SECRET || seats.length !== 2 || !MATCH_ID || !SEED)) throw new Error('gauntlet env missing: GAUNTLET_SECRET, GAUNTLET_SEATS (2 seats), GAUNTLET_MATCH_ID, GAUNTLET_SEED');
 
 const rules = createChessRules();
-const log = (room: string, msg: string): void => console.log(`[chess ${room.slice(0, 12)}] ${msg}`);
+// The node keeps only the last line of a gauntlet's output, so a placed match also logs to relay/logs/<matchId>.log.
+const LOG_FILE = DEV || !MATCH_ID ? null : `relay/logs/${MATCH_ID.slice(0, 32)}.log`;
+if (LOG_FILE) try { mkdirSync('relay/logs', { recursive: true }); } catch { /* read-only checkout: console only */ }
+const log = (room: string, msg: string): void => {
+  const line = `[chess ${room.slice(0, 12)}] ${msg}`;
+  console.log(line);
+  if (LOG_FILE) try { appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`); } catch { /* best effort */ }
+};
 
 // ------------------------------------------------------------------ the relay key (LitNode settle.js RELAY_TAG)
 const PKCS8_ED25519 = Buffer.from('302e020100300506032b657004220420', 'hex');
