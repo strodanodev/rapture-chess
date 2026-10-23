@@ -32,6 +32,8 @@ export interface ChessState {
   last: number;
   reason: string;
   seed: string;
+  /** The two player ids, side 0 (White, Alliance) and side 1 (Black, Horde): inputs are keyed by them. */
+  p: [string, string];
 }
 
 export const FILES = 'abcdefgh';
@@ -64,7 +66,6 @@ export interface ChessRules {
 }
 
 export function createChessRules(): ChessRules {
-  let participants: string[] = [];
 
   function resolve(state: ChessState, action: number): Move | null {
     if (state.over || (action & 7) !== Op.Move) return null;
@@ -87,20 +88,19 @@ export function createChessRules(): ChessRules {
 
   return {
     init(seed, who) {
-      participants = who.slice(0, 2);
-      return { v: 1, beat: 0, turn: 0, turnNo: 1, over: false, winner: -1, sans: [], fen: new Chess().fen(), last: 0, reason: '', seed };
+      return { v: 1, beat: 0, turn: 0, turnNo: 1, over: false, winner: -1, sans: [], fen: new Chess().fen(), last: 0, reason: '', seed, p: [String(who[0]), String(who[1])] };
     },
     step(prev, inputs) {
       const state: ChessState = { ...prev, sans: prev.sans.slice(), beat: prev.beat + 1, last: 0 };
       if (state.over) return state;
       // concede is honoured from either seat; a move only from the side to act
       for (const side of [0, 1] as const) {
-        if (((inputs[participants[side]] ?? 0) & 7) === Op.Concede) {
+        if (((inputs[state.p[side]] ?? 0) & 7) === Op.Concede) {
           state.over = true; state.winner = side === 0 ? 1 : 0; state.reason = 'concession'; state.last = Op.Concede;
           return state;
         }
       }
-      const x = (inputs[participants[state.turn]] ?? 0) | 0;
+      const x = (inputs[state.p[state.turn]] ?? 0) | 0;
       const move = resolve(state, x);
       if (!move) return state;
       const c = positionOf(state);
@@ -113,7 +113,7 @@ export function createChessRules(): ChessRules {
     done: (s) => s.over,
     scores(s) {
       const w = s.winner === 2 ? [0.5, 0.5] : s.winner === 0 ? [1, 0] : s.winner === 1 ? [0, 1] : [0, 0];
-      return Object.fromEntries(participants.map((p, i) => [p, w[i]]));
+      return Object.fromEntries(s.p.map((p, i) => [p, w[i]]));
     },
     legalActions(s) {
       if (s.over) return [];

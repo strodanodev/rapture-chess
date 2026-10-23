@@ -120,3 +120,7 @@ select.btn.small { text-transform: none; }
   .fps { display: none; }
   .promo { bottom: 110px; }
 }
+
+.clock { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; letter-spacing: 0.1em; color: var(--gold); padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.clock[hidden] { display: none; }
+.clock.urgent { color: #ff6a4a; border-color: #ff6a4a; }

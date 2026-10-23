@@ -36,6 +36,14 @@ export class Hud {
   realmChoice(): string { return $<HTMLSelectElement>('realm').value; }
   setQualityChoice(v: string): void { for (const id of ['quality', 'quality-title']) $<HTMLSelectElement>(id).value = v; }
   setFps(fps: number, quality: string): void { $('fps').textContent = `${Math.round(fps)} fps · ${quality}`; }
+  /** The turn clock of a relayed match: seconds left for the side to move, or null to hide it. */
+  setClock(seconds: number | null, yours: boolean): void {
+    const c = $('clock');
+    c.hidden = seconds === null;
+    if (seconds === null) return;
+    c.textContent = `${yours ? 'You' : 'Opponent'} · ${Math.max(0, Math.ceil(seconds))}s`;
+    c.classList.toggle('urgent', seconds < 10);
+  }
 
   showTitle(on: boolean): void { $('title').hidden = !on; }
   showHud(on: boolean): void { $('hud').hidden = !on; }

@@ -1,0 +1,16 @@
+{
+  "$comment": "LitNode gauntlet config for Rapture Chess (node/gauntlet.js). For every rapture-chess.v1 match this node hosts, it spawns relay/server.mts for that match alone: the node mints the seat tickets, proxies wss://<wsAddr>/<room> to the process, and the process posts the signed ledger to the node's /ledger and exits. Copy this file, set cwd to your Rapture Chess checkout (pnpm install at its root), then in the node's environment: GAUNTLETS=rapture-chess.v1=<absolute path to your copy>, GAUNTLET_GATEWAY_PORT=8478 (or RELAY_PORT=8478 when no other title fronts a relay), RULESETS=<checkout>/rulesets/rapture-chess.v1.js. The GAUNTLET_* variables (match id, seed, seats, secret, port, node url, build, placed mode) are set by the node per match.",
+  "command": "${node}",
+  "args": ["node_modules/tsx/dist/cli.mjs", "relay/server.mts"],
+  "cwd": "C:/Users/strodano/Documents/LitVM Games/CHESS",
+  "env": {
+    "CHESS_TURN_MS": "60000",
+    "CHESS_DISCONNECT_MS": "60000",
+    "CHESS_SIGN_MS": "60000"
+  },
+  "portRange": [7840, 7859],
+  "readyMs": 30000,
+  "ttlMs": 1800000,
+  "ticketTtlMs": 900000,
+  "settledGraceMs": 5000
+}

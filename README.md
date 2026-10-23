@@ -17,8 +17,12 @@
   crater, lava moat); both arenas are Blender-built and chosen on the title screen.
 - **60 fps by design.** Quality presets (low to ultra) and an adaptive governor that steps the pixel ratio, ambient
   occlusion, mirror floor, shadows and anti-aliasing down whenever the frame rate dips under 58 fps.
-- **Wagers in zkLTC.** `contracts/ChessWager.sol` escrows both stakes; the relay signs the result (EIP-712) and either
-  player settles on chain. The resolver key is meant to be swapped for LitNode settlement (`src/litnode/README.md`).
+- **A LitNode title, plug and play.** `pnpm title` bundles the rules into `rulesets/rapture-chess.v1.js` (conformant,
+  hash-pinned); `gauntlets/rapture-chess.json` lets any LitNode host run the match server per placed match; the page
+  seats through the arcade shell and both players sign the ledger, which the node replays and settles.
+- **Wagers in zkLTC, resolved by LitNode.** `contracts/LitNodeWager.sol` holds stakes bound to player keys and pays out on
+  the host node's signed delta (ed25519 verified on chain, host bonded on NodeStake, MatchBook finality when the match
+  is on chain). No key of ours decides a match. See `src/litnode/README.md`.
 
 ## Run it
 
@@ -27,12 +31,15 @@ pnpm install
 pnpm dev          # http://127.0.0.1:4174
 pnpm build        # static site in dist/
 pnpm lint         # type check
-pnpm test         # hardhat contract tests + relay test
-pnpm relay        # two-player relay on ws://127.0.0.1:7831 (RESOLVER_PRIVATE_KEY and WAGER_ADDRESS enable signed settlement)
+pnpm test         # hardhat escrow tests, canonical-JSON test, relay tests (dev and gauntlet modes)
+pnpm title        # LitNode title bundle + conformance (needs ../LITNODE/litnode or LITNODE_DIR)
+RELAY_DEV=1 pnpm relay   # a dev relay: open the game twice with ?relay=ws://127.0.0.1:7831&room=x&name=alice / bob
 ```
 
-Client env (`.env`): `VITE_WAGER_ADDRESS` (deployed escrow), `VITE_RELAY_URL` (default `ws://127.0.0.1:7831`).
-Deploy the escrow with `RESOLVER=0x… PRIVATE_KEY=0x… npx hardhat run scripts/deploy-wager.cjs --network liteforge`.
+Client env (`.env`): `VITE_WAGER_ADDRESS` (deployed escrow), `VITE_RPC_URL` (optional).
+Deploy the escrow with `PRIVATE_KEY=0x… npx hardhat run scripts/deploy-wager.cjs --network liteforge` (it reads LitNode's
+NodeStake, MatchBook and PlayerProfile addresses from the LitNode checkout). Hosting the title on a node, claiming it on
+TitleRegistry and the arcade launch are in `src/litnode/README.md`.
 
 ## Rebuild the 3D set (Blender CLI)
 
@@ -53,10 +60,11 @@ src/game/                 the local match (log, bot in a worker)
 src/roster.ts             collection -> two armies (owned cards first, seeded order)
 src/web3/wallet.ts        Deckwright wallet + holdings for the Rapture collection
 src/scene/                three.js: stage (post-processing, quality governor), realm, board, pieces, VFX (three.quarks), assets
-src/game/relay.ts         RelayMatch: a two-player match over the relay
-src/wager/                the zkLTC wager panel; src/web3/wager.ts the shared contract/hash definitions
-contracts/ relay/         ChessWager.sol + hardhat tests; the WebSocket relay (signed seats, turn clock, settlement)
-src/litnode/              LitNode title adapter and the settlement roadmap
+src/game/relay.ts         RelayMatch: a placed LitNode match (arcade shell seat + ledger signature) or a dev room
+src/wager/                the zkLTC wager panel; src/web3/wager.ts + canonical.ts the claim encoding
+contracts/                LitNodeWager.sol (+ vendored Ed25519, mocks, hardhat tests)
+relay/ gauntlets/         the gauntlet match server LitNode spawns per match, and its node config
+src/litnode/ rulesets/    the title (defineTitle shape), its bundled hash-pinned ruleset, the hosting guide
 src/ui/hud.ts             DOM HUD: champion card, move list, fallen, controls
 scripts/                  Blender build scripts
 public/models             set.glb and the avatars; public/art the card paintings; public/data the snapshot

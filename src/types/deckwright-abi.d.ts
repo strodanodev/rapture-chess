@@ -4,6 +4,8 @@ declare module 'deckwright/web/lib/abi.js' {
   export function isAddress(s: unknown): boolean;
   export function bytesToHex(bytes: Uint8Array): string;
   export function hexToBytes(hex: string): Uint8Array;
+  export const utf8ToHex: (text: string) => string;
+  export const boolAt: (ws: string[], i: number) => boolean;
   export function toBigInt(v: bigint | number | string): bigint;
   export function toQuantity(v: bigint | number | string): string;
   export function fromQuantity(hex: string): bigint;

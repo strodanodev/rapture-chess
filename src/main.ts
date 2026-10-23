@@ -1,11 +1,15 @@
 /**
  * Rapture Chess: the Rapture ARC 1 champions play chess on a Blender-built board, rendered with three.js.
  * Deckwright brings the wallet, the collection snapshot and the replayable match log; chess.js brings the rules.
- * Matches run against the worker bot, or over the relay for two players who may have wagered zkLTC on it.
+ *
+ * Three ways to play: against the worker bot; a LitNode match (the arcade launched this page for a placed match,
+ * the node hosts the relay, replays the log and settles it, and the LitNodeWager escrow pays on that result);
+ * or a dev relay room (`?relay=ws://127.0.0.1:7831&room=x&name=alice`).
  */
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
 import type { Move } from 'chess.js';
+import { parseLaunch } from 'deckwright/src/client/shell.ts';
 import { Stage } from './scene/stage';
 import { BoardView, squareToWorld, worldToSquare } from './scene/board';
 import { Army, PieceView } from './scene/pieces';
@@ -15,7 +19,7 @@ import { loadSet, preloadAvatars } from './scene/assets';
 import { Hud } from './ui/hud';
 import { LocalMatch, type Match, type MatchEvents } from './game/session';
 import { RelayMatch } from './game/relay';
-import { mountWager, type RelayStart, type WagerPanel } from './wager';
+import { mountWager, type WagerPanel } from './wager';
 import { encodeMove, type ChessState, type PieceType, type Side } from './rules/chessRules';
 import { buildRoster, ELEMENT_COLOR, type Card, type Collection } from './roster';
 import { createWeb3Link } from './web3/wallet';
@@ -34,6 +38,8 @@ let legal: Move[] = [];
 let busy = false;           // a move is animating: input waits
 let pendingPromotion: { from: string; to: string } | null = null;
 const fallen: [Card[], Card[]] = [[], []];
+const query = new URLSearchParams(location.search);
+const launch = parseLaunch();
 
 const snapshot: Collection = await fetch(`${import.meta.env.BASE_URL}data/collection.json`).then((r) => r.json());
 const web3 = createWeb3Link(snapshot);
@@ -46,7 +52,7 @@ void web3.restore();
 hud.bind({
   onPlay: (side) => { void startGame(side); },
   onWallet: () => { web3.toggle().catch((e: Error) => hud.toast(e.message)); },
-  onNewGame: () => { void startGame(you); },
+  onNewGame: () => { if (match instanceof RelayMatch) hud.toast('A relayed match cannot be restarted here.'); else void startGame(you); },
   onFlip: () => { void flyToSide(you === 0 ? 1 : 0, true); },
   onConcede: () => { if (match && !match.state.over) match.concede(); },
   onPromotion: (piece) => { if (pendingPromotion) { void playMove(pendingPromotion.from, pendingPromotion.to, piece); pendingPromotion = null; } },
@@ -54,8 +60,13 @@ hud.bind({
 });
 hud.setQualityChoice(localStorage.getItem('rapture-chess.quality') ?? 'auto');
 
-// the wager panel lives on the title screen and moves into the HUD during a match
-const wager: WagerPanel = mountWager({ root: document.getElementById('wager-title')!, web3, onStartRelayMatch: (o) => { void startRelay(o); } });
+// the zkLTC wager panel: stakes bound to the player's LitNode key, paid out from the node's settled delta
+const wager: WagerPanel = mountWager({
+  root: document.getElementById('wager-title')!,
+  web3,
+  playerKey: () => (match instanceof RelayMatch ? match.playerId : null),
+  nodeUrl: () => (match instanceof RelayMatch ? match.nodeUrl : null),
+});
 const placeWager = (slot: 'wager-title' | 'wager-hud') => {
   const from = slot === 'wager-hud' ? 'wager-title' : 'wager-hud';
   const box = document.getElementById(from)?.firstElementChild;
@@ -73,7 +84,7 @@ async function ensureStage(): Promise<void> {
   stage.scene.add(board.group);
   army = new Army(board.plinths, vfx);
   stage.scene.add(army.group);
-  stage.onUpdate((dt, t) => { board!.update(dt); army!.update(dt, t); vfx!.update(dt); realm!.update(dt, t); });
+  stage.onUpdate((dt, t) => { board!.update(dt); army!.update(dt, t); vfx!.update(dt); realm!.update(dt, t); tickClock(); });
   stage.onQuality((q, fps) => { hud.setFps(fps, q); vfx!.rich = q !== 'low'; });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
@@ -100,14 +111,13 @@ function realmFor(side: Side): RealmId {
 let seedCounter = 0;
 
 /** Common setup for any match: the stage, the realm, the two armies for a seed, the HUD. */
-async function prepare(side: Side, seed: string, loadingText: string): Promise<void> {
+async function prepare(side: Side, seed: string, loadingText: string, owned: Set<string>): Promise<void> {
   you = side;
   hud.showTitle(false);
   hud.showOver(null);
   hud.loading('Raising the board…', 0.05);
   await ensureStage();
   stage!.governing = false;
-  match?.close();
   army!.clear();
   fallen[0] = []; fallen[1] = [];
   clearSelection();
@@ -116,7 +126,7 @@ async function prepare(side: Side, seed: string, loadingText: string): Promise<v
   await realm!.load(r);
   vfx!.embers(new THREE.Color(realm!.preset.embers));
 
-  const rosters = [buildRoster(snapshot.cards, 0, web3.owned, seed), buildRoster(snapshot.cards, 1, web3.owned, seed)] as const;
+  const rosters = [buildRoster(snapshot.cards, 0, owned, seed), buildRoster(snapshot.cards, 1, owned, seed)] as const;
   const types = new Map<string, PieceType>();
   for (const [sq, p] of new Chess().board().flat().map((p, i) => [`${'abcdefgh'[i % 8]}${8 - Math.floor(i / 8)}`, p] as const)) if (p) types.set(sq, p.type);
   hud.loading(loadingText, 0.1);
@@ -131,6 +141,7 @@ async function prepare(side: Side, seed: string, loadingText: string): Promise<v
   hud.setMoves([]);
   hud.setCaptured(0, []); hud.setCaptured(1, []);
   hud.showCard(null, null, false, null);
+  hud.setClock(null, false);
   stage!.setAccentColors(side === 0 ? 0x38a8ff : 0xff6a2a, side === 0 ? 0xff6a2a : 0x38a8ff);
 }
 
@@ -142,7 +153,8 @@ const events: MatchEvents = {
 async function startGame(side: Side): Promise<void> {
   // seed: wallet + time, like a placement seed; the log replays from it
   const seed = `${web3.wallet.snapshot().address ?? 'guest'}:${Date.now().toString(16)}:${seedCounter++}`;
-  await prepare(side, seed, 'Summoning champions…');
+  match?.close();
+  await prepare(side, seed, 'Summoning champions…', web3.owned);
   match = new LocalMatch(seed, you, events);
   hud.setTurn(0, you, false);
   hud.setStatus(you === 0 ? 'Alliance opens. Pick a champion.' : 'The Alliance opens…');
@@ -150,29 +162,36 @@ async function startGame(side: Side): Promise<void> {
   match.poke();
 }
 
-/** A two-player match over the relay (friendly or wagered). Both sides build the armies from the relay's seed. */
-async function startRelay(o: RelayStart): Promise<void> {
+/** A relayed match: placed by LitNode (the arcade launched this page) or a dev room. Both screens draw the armies
+ *  from the relay's seed alone, so they agree on who stands where. */
+async function startRelay(open: () => Promise<RelayMatch> | RelayMatch): Promise<void> {
   hud.showTitle(false);
   hud.loading('Joining the match…', 0.02);
-  const m = new RelayMatch({ url: o.url, matchId: o.matchId, side: o.side, seed: o.seed, wallet: web3.wallet, events });
-  m.onSettlement((s) => wager.showSettlement(s));
-  m.onClock((c) => wager.showClock(c));
+  let m: RelayMatch;
+  try { m = await open(); } catch (e) { hud.loading(null); hud.showTitle(true); hud.toast((e as Error).message); return; }
   match?.close();
   match = m;
-  // the relay reveals the seed when both seats are taken; the armies are drawn from it on both screens
   hud.loading('Waiting for the opponent…', 0.04);
-  while (!m.seed) await new Promise((r) => setTimeout(r, 250));
-  await prepare(o.side, m.seed, 'Summoning champions…');
-  match = m; // prepare() closed nothing (match was already m), keep it current
+  while (!m.seed && match === m) await new Promise((r) => setTimeout(r, 250));
+  if (match !== m) return;
+  await prepare(m.you, m.seed, 'Summoning champions…', new Set());
+  match = m; // prepare() touched nothing else
+  m.onClock(() => tickClock());
+  m.onSettled((s) => { if (s.delta && !s.dev) wager.showMatch(s.matchId); });
   hud.setTurn(m.state.turn, you, m.state.over);
-  hud.setStatus(you === 0 ? 'Alliance opens. Pick a champion.' : 'The Alliance opens…');
   await flyToSide(you, false);
   // moves that arrived while the armies loaded are already in the state: play them onto the board
   const replay = new Chess();
   for (const san of m.state.sans) { const mv = replay.move(san); if (mv) await army!.apply(mv); }
   hud.setMoves(m.state.sans);
   if (m.state.over) hud.showOver(m.state.winner === 2 ? 'Draw' : m.state.winner === you ? 'Victory' : 'Defeat', m.state.reason);
-  else if (m.state.turn !== you) hud.setStatus('Waiting for the opponent…');
+  else hud.setStatus(m.yourTurn ? 'Your move.' : 'Waiting for the opponent…');
+}
+
+function tickClock(): void {
+  if (!(match instanceof RelayMatch)) return;
+  if (!match.clock || match.state.over) { hud.setClock(null, false); return; }
+  hud.setClock((match.clock.deadline - Date.now()) / 1000, match.clock.side === you);
 }
 
 async function onStep(move: Move | null, state: ChessState): Promise<void> {
@@ -209,8 +228,9 @@ async function onStep(move: Move | null, state: ChessState): Promise<void> {
     const title = draw ? 'Draw' : youWon ? 'Victory' : 'Defeat';
     const detail = draw ? `Drawn by ${state.reason}.` : `${state.winner === 0 ? 'The Alliance' : 'The Horde'} wins by ${state.reason}. ${state.sans.length} moves recorded in the match log.`;
     hud.setStatus(detail);
+    hud.setClock(null, false);
     if (!draw) { const king = kingOf(state.winner as Side); if (king) vfx!.finale(king.group.position, king.color); }
-    setTimeout(() => { if (match === m) hud.showOver(title, detail); }, draw ? 600 : 2200);
+    setTimeout(() => { if (match === m) hud.showOver(title, m instanceof RelayMatch ? `${detail} The node settles the ledger; the wager panel claims the pot once it has.` : detail); }, draw ? 600 : 2200);
     console.info('[chess] match log', JSON.stringify({ seed: m.seed, log: m.log }));
     return;
   }
@@ -299,3 +319,11 @@ void (async () => {
   let i = 0;
   setInterval(() => { if (stage && !match) stage.setAccentColors(colors[i % 4], colors[(i + 2) % 4]); i++; }, 4000);
 })();
+
+// ------------------------------------------------------------------ launch
+if (launch.matchId) {
+  // The LitNode arcade opened this page for a placed match: seat through the shell and play.
+  void startRelay(() => RelayMatch.placed(events));
+} else if (query.get('relay')) {
+  void startRelay(() => RelayMatch.dev(events, query.get('relay')!, query.get('room') ?? 'lobby', query.get('name') ?? `player-${Math.floor(Math.random() * 1e6)}`));
+}

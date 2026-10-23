@@ -13,7 +13,9 @@
     "relay": "tsx relay/server.mts",
     "test:contracts": "hardhat test",
     "test:relay": "node --test test/relay.test.mjs",
-    "test": "pnpm test:contracts && pnpm test:relay"
+    "test:wager": "node --test test/wager-canonical.test.mjs",
+    "test": "pnpm test:contracts && pnpm test:wager && pnpm test:relay",
+    "title": "node scripts/build-title.mjs"
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",
@@ -29,6 +31,7 @@
     "@openzeppelin/contracts": "5.0.2",
     "@types/three": "0.186.0",
     "@types/ws": "8.18.1",
+    "esbuild": "0.28.1",
     "ethers": "6.17.0",
     "hardhat": "2.29.1",
     "tsx": "4.23.7",

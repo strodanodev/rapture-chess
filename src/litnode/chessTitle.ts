@@ -1,7 +1,9 @@
 /**
- * Rapture Chess as a LitNode replayable title: the same shape Deckwright's `defineTcgTitle` produces (and LitNode's
- * `defineTitle`), so a bundled ruleset needs no LitNode import. `init`/`step` are the chess rules over the integer
- * action log, so a node and its witnesses replay a relay's `{ seed, entries }` to the same result the escrow was paid on.
+ * Rapture Chess as a LitNode replayable title: the exact shape LitNode's `defineTitle` (titles/title.js) produces,
+ * with no LitNode import, so the bundled ruleset is one import-free module that passes `sdk/conformance.mjs`.
+ * `init`/`step` are the chess rules over the integer action log: the host node and its witnesses replay a match's
+ * `{ seed, entries }` to the same `serialize()` root and the same scores, and that replayed result is what the
+ * wager escrow pays on.
  */
 import { createChessRules, type ChessState } from '../rules/chessRules';
 
@@ -17,7 +19,7 @@ export function defineChessTitle() {
       rulesetId: CHESS_RULESET_ID,
       tickRate: 1,
       maxTicks: 1200,
-      modes: ['ranked', 'casual', 'wager'],
+      modes: ['ranked', 'casual'],
       participants: 2,
       inputSchema: 'chess-move:op3,from6,to6,promo3',
       hiddenInfo: false,
@@ -25,7 +27,7 @@ export function defineChessTitle() {
       standingFloor: 0,
       hostPolicy: { affinity: 'open' },
       exclusive: false,
-      display: { title: 'Rapture Chess', url: 'https://rapture-chess.vercel.app', description: 'The Rapture ARC 1 champions play chess. Alliance is White, Horde is Black.', cover: null, accent: '#ffc455' },
+      display: { title: 'Rapture Chess', url: 'https://rapture-chess.vercel.app/', description: 'The Rapture ARC 1 champions play chess. Alliance is White, Horde is Black.', cover: null, accent: '#ffc455' },
       balanceVersion: balance.version,
       services: {
         leaderboard: { kind: 'elo', k: 24 },
@@ -38,7 +40,9 @@ export function defineChessTitle() {
     step: rules.step,
     done: rules.done,
     scores: rules.scores,
+    /** What the root commits to: the whole state (there is no hidden information in chess). */
     serialize: (s: ChessState): ChessState => JSON.parse(JSON.stringify(s)) as ChessState,
-    view: (s: ChessState): ChessState => s,
+    /** What a client may see: the position and the result, not the seed. */
+    view: (s: ChessState) => ({ fen: s.fen, turn: s.turn, turnNo: s.turnNo, over: s.over, winner: s.winner, reason: s.reason, sans: s.sans.slice(), last: s.last, p: s.p }),
   };
 }

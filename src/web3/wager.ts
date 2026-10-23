@@ -1,153 +1,154 @@
 /**
- * The ChessWager escrow, shared by the browser client and the relay: ids and hashes (the single definition of
- * matchId, seedCommit and logHash), the EIP-712 settlement typed data, the minimal ABI and calldata builders.
- * No signing or sending here: the client sends through the Deckwright wallet, the relay signs with ethers.
+ * The LitNodeWager escrow from the browser: zkLTC stakes bound to a LitNode player key, paid out on the host
+ * node's signed delta. No signing or resolver here: the client sends through the Deckwright wallet, and the
+ * proof is LitNode's own (`GET <node>/delta/<matchId>`), re-serialised exactly as the node signed it.
  *
- *   matchId    = keccak256(seed)                                     seed: 32 random bytes the creator reveals to the relay
- *   seedCommit = keccak256("rapture-chess/seed/v1" ‖ seed)           abi.encodePacked(string, bytes32)
- *   logHash    = keccak256(abi.encode(bytes32 seed, int32[] inputs)) inputs flattened: e0.side0, e0.side1, e1.side0, …
+ *   claim(matchId, deltaJson, hostSig)   deltaJson = canonical(delta without hostSig/cosigners/cosigs/disputes)
+ *                                        hostSig   = the delta's hostSig (64 bytes, ed25519 by the host node)
  */
 import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesToHex, hexToBytes, encodeCall, words, uintAt, addressAt } from 'deckwright/web/lib/abi.js';
+import { bytesToHex, encodeCall, utf8ToHex, words, uintAt, addressAt, boolAt } from 'deckwright/web/lib/abi.js';
 import type { ChainClient } from 'deckwright/web/lib/chain.js';
-import type { LogEntry } from '../game/session';
+import { canonical } from './canonical';
 
-export const SEED_DOMAIN = 'rapture-chess/seed/v1';
-export const WAGER_DOMAIN_NAME = 'RaptureChessWager';
-export const WAGER_DOMAIN_VERSION = '1';
+export { canonical };
+
 export const LITEFORGE_CHAIN_ID = 4441;
+export const CHESS_RULESET_ID = 'rapture-chess.v1';
 
-/** Human-readable ABI of what the client and relay call or read. */
+/** Human-readable ABI of what the client calls or reads. */
 export const WAGER_ABI = [
-  'function createMatch(bytes32 matchId, bytes32 seedCommit) payable',
-  'function joinMatch(bytes32 matchId) payable',
-  'function settle(bytes32 matchId, uint8 winner, bytes32 logHash, bytes resolverSig)',
-  'function cancel(bytes32 matchId)',
-  'function timeoutClaim(bytes32 matchId)',
+  'function stake(bytes32 playerKey) payable',
+  'function requestUnstake()',
+  'function unstake()',
+  'function claim(bytes32 matchId, bytes deltaJson, bytes hostSig)',
   'function withdraw()',
-  'function matches(bytes32) view returns (address creator, address joiner, uint96 stake, uint64 createdAt, uint64 joinedAt, uint8 status, uint8 winner, bytes32 seedCommit, bytes32 logHash)',
+  'function stakeOf(address wallet) view returns (uint256 amount, uint64 unstakeAt)',
+  'function keyOf(address wallet) view returns (bytes32)',
+  'function walletOf(bytes32 key) view returns (address)',
+  'function claimed(bytes32 matchId) view returns (bool)',
   'function pending(address) view returns (uint256)',
-  'function resolver() view returns (address)',
+  'function unstakeDelay() view returns (uint64)',
   'function feeBps() view returns (uint16)',
-  'function settleTimeout() view returns (uint64)',
-  'event MatchCreated(bytes32 indexed matchId, address indexed creator, uint256 stake, bytes32 seedCommit)',
-  'event MatchJoined(bytes32 indexed matchId, address indexed joiner)',
-  'event MatchSettled(bytes32 indexed matchId, uint8 winner, bytes32 logHash, uint256 payout, uint256 fee)',
-  'event MatchCancelled(bytes32 indexed matchId)',
-  'event MatchTimedOut(bytes32 indexed matchId, address indexed by)',
+  'event Staked(address indexed wallet, bytes32 indexed key, uint256 amount, uint256 total)',
+  'event UnstakeRequested(address indexed wallet, uint64 at)',
+  'event Unstaked(address indexed wallet, uint256 amount)',
+  'event Claimed(bytes32 indexed matchId, bytes32 indexed hostKey, bytes32 keyA, bytes32 keyB, uint256 pot, address winner, uint256 fee)',
+  'event PaymentHeld(address indexed to, uint256 amount)',
+  'event Withdrawn(address indexed to, uint256 amount)',
 ] as const;
 
-export const MatchStatus = { None: 0, Open: 1, Live: 2, Settled: 3, Cancelled: 4, TimedOut: 5 } as const;
-export type MatchStatusCode = typeof MatchStatus[keyof typeof MatchStatus];
-export const STATUS_NAME: Record<number, string> = { 0: 'none', 1: 'open', 2: 'live', 3: 'settled', 4: 'cancelled', 5: 'timed out' };
+// ------------------------------------------------------------------ ids
+const HEX64 = /^[0-9a-f]{64}$/;
+/** A LitNode id (player key, node key, match id): 64 lowercase hex characters, no 0x. */
+export const isLitId = (s: unknown): s is string => typeof s === 'string' && HEX64.test(s);
+/** A LitNode id as the bytes32 the contract takes. */
+export function litIdToBytes32(id: string): string {
+  const s = String(id).replace(/^0x/, '').toLowerCase();
+  if (!HEX64.test(s)) throw new TypeError('expected a 64-hex LitNode id');
+  return `0x${s}`;
+}
+export const isBytes32 = (s: unknown): s is string => typeof s === 'string' && /^0x[0-9a-fA-F]{64}$/.test(s);
 
-/** 0 creator (Alliance), 1 joiner (Horde), 2 draw: the same numbering as the chess state's `winner`. */
-export type Winner = 0 | 1 | 2;
-
-export interface Settlement { matchId: string; winner: Winner; logHash: string; sig: string }
-
-// ------------------------------------------------------------------ hashing
-const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
-const concat = (...parts: Uint8Array[]): Uint8Array => {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
-  return out;
-};
-export const keccak = (bytes: Uint8Array): string => bytesToHex(keccak_256(bytes));
-
-export function isBytes32(s: unknown): s is string { return typeof s === 'string' && /^0x[0-9a-fA-F]{64}$/.test(s); }
-
-/** 32 random bytes as 0x hex (browser or Node 22 `globalThis.crypto`). */
-export function randomSeed(): string {
-  const b = new Uint8Array(32);
-  globalThis.crypto.getRandomValues(b);
-  return bytesToHex(b);
+// ------------------------------------------------------------------ the claim
+/** The settled delta as a node serves it (GET /delta/:id): the signed body plus the node's attachments. */
+export interface LitNodeDelta {
+  matchId: string;
+  rulesetId: string;
+  hostId: string;
+  hostSig: string;
+  participants: string[];
+  scores: Record<string, number>;
+  attestation: string;
+  complete?: boolean;
+  resultHash: string;
+  placed?: boolean;
+  mode?: string;
+  cosigners?: string[];
+  cosigs?: Record<string, string>;
+  disputes?: unknown[];
+  verification?: string;
+  official?: boolean;
+  [k: string]: unknown;
 }
 
-export function matchIdOf(seed: string): string {
-  if (!isBytes32(seed)) throw new TypeError('seed must be 32 bytes of 0x hex');
-  return keccak(hexToBytes(seed));
+/** What the escrow verifies: the canonical bytes the host signed, and its signature. */
+export function deltaClaimBytes(delta: LitNodeDelta): { json: string; hostSig: string } {
+  const { hostSig, cosigners: _c, cosigs: _s, disputes: _d, verification: _v, official: _o, ...body } = delta;
+  if (!/^[0-9a-f]{128}$/.test(hostSig ?? '')) throw new Error('the delta carries no host signature');
+  return { json: canonical(body), hostSig: `0x${hostSig}` };
 }
 
-export function seedCommitOf(seed: string): string {
-  if (!isBytes32(seed)) throw new TypeError('seed must be 32 bytes of 0x hex');
-  return keccak(concat(utf8(SEED_DOMAIN), hexToBytes(seed)));
+/** Why a delta could not pay out, before spending gas; null when it looks claimable. */
+export function claimProblem(delta: LitNodeDelta, matchId: string): string | null {
+  if (delta.matchId !== matchId) return 'the delta is for another match';
+  if (delta.rulesetId !== CHESS_RULESET_ID) return `the delta is for ${delta.rulesetId}, not ${CHESS_RULESET_ID}`;
+  if (delta.attestation !== 'players') return `the result is ${delta.attestation}-attested: both players must have signed the ledger`;
+  if (delta.complete === false) return 'the match did not finish';
+  if (!Array.isArray(delta.participants) || delta.participants.length !== 2 || !delta.participants.every(isLitId)) return 'the delta names no two player keys';
+  if (!delta.scores || delta.participants.some((p) => typeof delta.scores[p] !== 'number')) return 'the delta carries no scores';
+  return null;
 }
 
-const word = (hex: string): string => hex.slice(2).toLowerCase().padStart(64, '0');
-/** int32 as a 256-bit two's complement word. */
-const int32Word = (n: number): string => {
-  const v = BigInt(n | 0);
-  return (v < 0n ? (1n << 256n) + v : v).toString(16).padStart(64, '0');
-};
-
-/** keccak256(abi.encode(bytes32 seed, int32[] inputs)) over the match log. */
-export function logHashOf(seed: string, entries: ReadonlyArray<Pick<LogEntry, 'inputs'>>): string {
-  if (!isBytes32(seed)) throw new TypeError('seed must be 32 bytes of 0x hex');
-  const flat = entries.flatMap((e) => [e.inputs[0] | 0, e.inputs[1] | 0]);
-  const hex = word(seed) + int32Word(0x40) + int32Word(flat.length) + flat.map(int32Word).join('');
-  return keccak(hexToBytes(`0x${hex}`));
-}
-
-// ------------------------------------------------------------------ EIP-712
-export const SETTLEMENT_TYPES = {
-  Settlement: [
-    { name: 'matchId', type: 'bytes32' },
-    { name: 'winner', type: 'uint8' },
-    { name: 'logHash', type: 'bytes32' },
-  ],
-} as const;
-
-export function settlementDomain(verifyingContract: string, chainId = LITEFORGE_CHAIN_ID) {
-  return { name: WAGER_DOMAIN_NAME, version: WAGER_DOMAIN_VERSION, chainId, verifyingContract };
+/** 0 side 0 wins, 1 side 1 wins, 2 draw, as the board numbers it. */
+export function deltaWinner(delta: LitNodeDelta): 0 | 1 | 2 {
+  const [a, b] = delta.participants;
+  const sa = delta.scores[a] ?? 0, sb = delta.scores[b] ?? 0;
+  return sa === sb ? 2 : sa > sb ? 0 : 1;
 }
 
 // ------------------------------------------------------------------ calldata
+const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
+export const keccak = (bytes: Uint8Array): string => bytesToHex(keccak_256(bytes));
 export const selector = (signature: string): string => `0x${keccak(utf8(signature)).slice(2, 10)}`;
 export const SELECTORS = {
-  createMatch: selector('createMatch(bytes32,bytes32)'),
-  joinMatch: selector('joinMatch(bytes32)'),
-  settle: selector('settle(bytes32,uint8,bytes32,bytes)'),
-  cancel: selector('cancel(bytes32)'),
-  timeoutClaim: selector('timeoutClaim(bytes32)'),
+  stake: selector('stake(bytes32)'),
+  requestUnstake: selector('requestUnstake()'),
+  unstake: selector('unstake()'),
+  claim: selector('claim(bytes32,bytes,bytes)'),
   withdraw: selector('withdraw()'),
-  matches: selector('matches(bytes32)'),
+  stakeOf: selector('stakeOf(address)'),
+  keyOf: selector('keyOf(address)'),
+  walletOf: selector('walletOf(bytes32)'),
+  claimed: selector('claimed(bytes32)'),
   pending: selector('pending(address)'),
-  resolver: selector('resolver()'),
-  settleTimeout: selector('settleTimeout()'),
+  unstakeDelay: selector('unstakeDelay()'),
+  feeBps: selector('feeBps()'),
 };
 
-// Deckwright's encoder has no bytes32 type: a bytes32 is a uint256 word, so we pass it as such.
+// Deckwright's encoder has no bytes32 type: a bytes32 is a uint256 word, so it is passed as such.
 const b32 = (hex: string): bigint => { if (!isBytes32(hex)) throw new TypeError('expected bytes32'); return BigInt(hex); };
 
-export const encodeCreateMatch = (matchId: string, seedCommit: string): string => encodeCall(SELECTORS.createMatch, ['uint256', 'uint256'], [b32(matchId), b32(seedCommit)]);
-export const encodeJoinMatch = (matchId: string): string => encodeCall(SELECTORS.joinMatch, ['uint256'], [b32(matchId)]);
-export const encodeSettle = (s: Settlement): string => encodeCall(SELECTORS.settle, ['uint256', 'uint8', 'uint256', 'bytes'], [b32(s.matchId), s.winner, b32(s.logHash), s.sig]);
-export const encodeCancel = (matchId: string): string => encodeCall(SELECTORS.cancel, ['uint256'], [b32(matchId)]);
-export const encodeTimeoutClaim = (matchId: string): string => encodeCall(SELECTORS.timeoutClaim, ['uint256'], [b32(matchId)]);
+export const encodeStake = (playerKey: string): string => encodeCall(SELECTORS.stake, ['uint256'], [b32(litIdToBytes32(playerKey))]);
+export const encodeRequestUnstake = (): string => SELECTORS.requestUnstake;
+export const encodeUnstake = (): string => SELECTORS.unstake;
 export const encodeWithdraw = (): string => SELECTORS.withdraw;
+export const encodeClaim = (matchId: string, json: string, hostSig: string): string =>
+  encodeCall(SELECTORS.claim, ['uint256', 'bytes', 'bytes'], [b32(litIdToBytes32(matchId)), utf8ToHex(json), hostSig]);
 
 // ------------------------------------------------------------------ reads
-export interface MatchRecord {
-  creator: string; joiner: string; stake: bigint; createdAt: number; joinedAt: number; status: number; winner: number; seedCommit: string; logHash: string;
-}
+export interface StakeRecord { amount: bigint; unstakeAt: number; key: string | null }
 
-export function decodeMatch(data: string): MatchRecord {
-  const ws = words(data);
-  if (ws.length < 9) throw new Error('matches(): short response');
-  return {
-    creator: addressAt(ws, 0), joiner: addressAt(ws, 1), stake: uintAt(ws, 2), createdAt: Number(uintAt(ws, 3)), joinedAt: Number(uintAt(ws, 4)),
-    status: Number(uintAt(ws, 5)), winner: Number(uintAt(ws, 6)), seedCommit: `0x${ws[7]}`, logHash: `0x${ws[8]}`,
-  };
+export async function readStake(chain: ChainClient, contract: string, wallet: string): Promise<StakeRecord> {
+  const [s, k] = await Promise.all([
+    chain.call({ to: contract, data: encodeCall(SELECTORS.stakeOf, ['address'], [wallet]) }),
+    chain.call({ to: contract, data: encodeCall(SELECTORS.keyOf, ['address'], [wallet]) }),
+  ]);
+  const ws = words(s);
+  const key = words(k)[0] ?? '';
+  return { amount: uintAt(ws, 0), unstakeAt: Number(uintAt(ws, 1)), key: /^0+$/.test(key) ? null : key };
 }
-
-export async function readMatch(chain: ChainClient, contract: string, matchId: string): Promise<MatchRecord> {
-  return decodeMatch(await chain.call({ to: contract, data: encodeCall(SELECTORS.matches, ['uint256'], [b32(matchId)]) }));
+export async function readWalletOf(chain: ChainClient, contract: string, playerKey: string): Promise<string> {
+  return addressAt(words(await chain.call({ to: contract, data: encodeCall(SELECTORS.walletOf, ['uint256'], [b32(litIdToBytes32(playerKey))]) })), 0);
 }
-
-export async function readPending(chain: ChainClient, contract: string, address: string): Promise<bigint> {
-  return uintAt(words(await chain.call({ to: contract, data: encodeCall(SELECTORS.pending, ['address'], [address]) })), 0);
+export async function readClaimed(chain: ChainClient, contract: string, matchId: string): Promise<boolean> {
+  return boolAt(words(await chain.call({ to: contract, data: encodeCall(SELECTORS.claimed, ['uint256'], [b32(litIdToBytes32(matchId))]) })), 0);
+}
+export async function readPending(chain: ChainClient, contract: string, wallet: string): Promise<bigint> {
+  return uintAt(words(await chain.call({ to: contract, data: encodeCall(SELECTORS.pending, ['address'], [wallet]) })), 0);
+}
+export async function readUnstakeDelay(chain: ChainClient, contract: string): Promise<number> {
+  return Number(uintAt(words(await chain.call({ to: contract, data: SELECTORS.unstakeDelay })), 0));
 }
 
 // ------------------------------------------------------------------ amounts

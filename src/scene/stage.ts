@@ -264,6 +264,9 @@ export class Stage {
   }
 
   start(): void {
+    // A hidden tab gets no animation frames, but a relayed match still has to progress (moves resolve through
+    // tweens): tick the clocks coarsely while hidden so the game logic never waits on a frame that will not come.
+    setInterval(() => { if (document.hidden) { tweens.update(0.25); for (const fn of this.updaters) fn(0.25, performance.now() / 1000); } }, 250);
     this.renderer.setAnimationLoop(() => {
       this.timer.update();
       const dt = Math.min(0.05, this.timer.getDelta()), t = this.timer.getElapsed();

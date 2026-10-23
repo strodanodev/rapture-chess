@@ -1,0 +1,14 @@
+{
+  "rulesetId": "rapture-chess.v1",
+  "buildHash": "cf604358b9bf6e7faca935b158946f30f2404ec57fc4ffc712cf352bff54b660",
+  "bytes": 88245,
+  "kind": "replayable",
+  "display": {
+    "title": "Rapture Chess",
+    "url": "https://rapture-chess.vercel.app/",
+    "description": "The Rapture ARC 1 champions play chess. Alliance is White, Horde is Black.",
+    "cover": null,
+    "accent": "#ffc455"
+  },
+  "builtAt": "2026-10-23T08:45:30.754Z"
+}

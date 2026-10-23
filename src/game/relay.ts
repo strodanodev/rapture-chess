@@ -1,37 +1,21 @@
 /**
- * A relayed two-player match (wagered or friendly): the relay seats both wallets, orders the moves and signs the
- * settlement. This client applies only the entries the relay echoes back, so both boards and the relay replay the
- * same log; `poke()` is a no-op because the relay pushes the opponent's moves.
+ * A two-player match over the gauntlet relay. Two ways in:
+ *
+ *   placed   the LitNode arcade launched this page for a match the mesh placed (`?match=&ws=&room=&player=`):
+ *            the cabinet shell signs the seat challenge and, at the end, the match ledger; the relay posts the
+ *            signed ledger to the node and the node's replay is the result (RelayMatch.placed);
+ *   dev      a relay started with RELAY_DEV=1, rooms by name (`?relay=ws://127.0.0.1:7831&room=x&name=alice`).
+ *
+ * The relay echoes accepted entries; only those move the board, so both screens replay the same log.
  */
 import type { Move } from 'chess.js';
-import type { Wallet } from 'deckwright/web/lib/wallet.js';
+import { connectShell, parseLaunch, type CabinetShell } from 'deckwright/src/client/shell.ts';
 import { createChessRules, type ChessRules, type ChessState, concede, Op, type Side } from '../rules/chessRules';
 import type { LogEntry, Match, MatchEvents } from './session';
-import type { Winner } from '../web3/wager';
 
-export interface RelaySettlement {
-  matchId: string;
-  winner: Winner;
-  logHash: string;
-  /** The resolver's EIP-712 signature, or null when the relay has no resolver key. */
-  sig: string | null;
-  seed: string;
-  entries: LogEntry[];
-}
 export interface RelayClock { side: Side; deadline: number; turnMs: number }
-
-export interface RelayMatchOptions {
-  /** ws:// or wss:// relay origin, e.g. ws://127.0.0.1:7831 */
-  url: string;
-  matchId: string;
-  side: Side;
-  /** The creator (side 0) reveals the seed that hashes to the match id. */
-  seed?: string;
-  wallet: Wallet;
-  events: MatchEvents;
-  /** Dev relays (RELAY_DEV=1) accept a name instead of a wallet signature. */
-  name?: string;
-}
+/** What the relay reports once the node settled (placed matches) or the game ended (dev). */
+export interface RelaySettled { matchId: string; delta: Record<string, unknown> | null; seed: string; entries: LogEntry[]; dev: boolean }
 
 export class RelayMatch implements Match {
   public readonly rules: ChessRules = createChessRules();
@@ -39,32 +23,58 @@ export class RelayMatch implements Match {
   public readonly log: LogEntry[] = [];
   public seed = '';
   public participants: [string, string] = ['alliance', 'horde'];
-  public settlement: RelaySettlement | null = null;
+  public you: Side = 0;
+  public matchId = '';
+  public buildHash: string | null = null;
+  public settled: RelaySettled | null = null;
   public clock: RelayClock | null = null;
   private ws: WebSocket | null = null;
   private started = false;
   private closed = false;
-  private readonly settlementListeners: Array<(s: RelaySettlement) => void> = [];
+  private readonly settledListeners: Array<(s: RelaySettled) => void> = [];
   private readonly clockListeners: Array<(c: RelayClock) => void> = [];
-  private readonly events: MatchEvents;
-  public readonly you: Side;
-  public readonly matchId: string;
 
-  constructor(private readonly opts: RelayMatchOptions) {
-    this.you = opts.side;
-    this.matchId = opts.matchId;
-    this.events = opts.events;
+  private constructor(private readonly events: MatchEvents, public readonly playerId: string, private readonly shell: CabinetShell | null) {
     this.state = this.rules.init('pending', this.participants);
-    this.open();
+  }
+
+  /** The placed match this page was launched for, seated through the arcade shell. */
+  static async placed(events: MatchEvents): Promise<RelayMatch> {
+    const launch = parseLaunch();
+    const shell = await connectShell();
+    const you = shell.init.player.id;
+    const m = new RelayMatch(events, you, shell);
+    const wsAddr = launch.ws ?? shell.init.match?.wsAddr ?? null;
+    const room = launch.room ?? (launch.matchId ? `LIT-${launch.matchId.slice(0, 32).toUpperCase()}` : null);
+    if (!wsAddr || !room) throw new Error('no relay in the launch: open this game from the LitNode arcade');
+    m.matchId = launch.matchId ?? shell.init.match?.matchId ?? '';
+    m.buildHash = launch.buildHash ?? shell.init.match?.buildHash ?? null;
+    events.onStatus('claiming your seat…');
+    const base = `${wsAddr.replace(/^ws/, 'http').replace(/\/+$/, '')}/${room}/ticket?player=${encodeURIComponent(you)}`;
+    // First ask returns a one-time nonce (401); the second carries the player key's signature over it.
+    const first = await fetch(base).then((r) => r.json()) as { challenge?: { matchId: string; room: string; player: string; nonce: string }; error?: string };
+    if (!first.challenge) throw new Error(first.error ?? 'seat: no challenge');
+    const sig = await shell.signSeat(first.challenge);
+    const seat = await fetch(`${base}&nonce=${first.challenge.nonce}&sig=${sig}`).then((r) => r.json()) as { ticket?: string; ws?: string; error?: string };
+    if (!seat.ticket || !seat.ws) throw new Error(seat.error ?? 'seat: no ticket');
+    m.open(seat.ws, { t: 'hello', ticket: seat.ticket });
+    return m;
+  }
+
+  /** A dev relay room: `url` is the relay origin, players name themselves. */
+  static dev(events: MatchEvents, url: string, room: string, name: string): RelayMatch {
+    const m = new RelayMatch(events, name, null);
+    m.open(url.replace(/\/+$/, ''), { t: 'hello', room, player: name });
+    return m;
   }
 
   get yourTurn(): boolean { return this.started && !this.state.over && this.state.turn === this.you; }
+  get nodeUrl(): string | null { return this.shell?.init.node?.url ?? null; }
 
   legalMoves(): Move[] {
     if (!this.started) return [];
     return this.rules.legalActions(this.state).map((x) => this.rules.resolve(this.state, x)!).filter(Boolean);
   }
-
   act(action: number): boolean {
     if (!this.started || this.closed) return false;
     if ((action & 7) !== Op.Concede && (!this.yourTurn || !this.rules.isLegal(this.state, action))) return false;
@@ -73,21 +83,19 @@ export class RelayMatch implements Match {
   }
   concede(): void { this.act(concede()); }
   poke(): void { /* the relay pushes the opponent's entries */ }
-  close(): void { this.closed = true; this.ws?.close(); this.ws = null; }
+  close(): void { this.closed = true; this.ws?.close(); this.ws = null; this.shell?.close(); }
+  /** Tell the arcade the match was played (it closes the title). */
+  played(): void { this.shell?.exit(); }
 
-  onSettlement(cb: (s: RelaySettlement) => void): void { this.settlementListeners.push(cb); if (this.settlement) cb(this.settlement); }
+  onSettled(cb: (s: RelaySettled) => void): void { this.settledListeners.push(cb); if (this.settled) cb(this.settled); }
   onClock(cb: (c: RelayClock) => void): void { this.clockListeners.push(cb); }
 
   // ------------------------------------------------------------------ transport
-  private open(): void {
-    const base = this.opts.url.replace(/\/+$/, '');
-    const ws = new WebSocket(`${base}/${this.matchId}`);
+  private open(url: string, hello: Record<string, unknown>): void {
+    const ws = new WebSocket(url);
     this.ws = ws;
-    this.events.onStatus('connecting to the relay…');
-    ws.onopen = () => {
-      const address = this.opts.wallet.snapshot().address;
-      ws.send(JSON.stringify({ t: 'hello', matchId: this.matchId, address: address ?? this.opts.name ?? '', seed: this.opts.seed }));
-    };
+    this.events.onStatus('connecting to the match…');
+    ws.onopen = () => ws.send(JSON.stringify(hello));
     ws.onclose = () => { if (!this.closed) this.events.onStatus(this.state.over ? 'match over' : 'disconnected from the relay'); };
     ws.onerror = () => this.events.onStatus('relay connection failed');
     ws.onmessage = (ev) => { void this.onServer(JSON.parse(String(ev.data))); };
@@ -95,21 +103,17 @@ export class RelayMatch implements Match {
 
   private async onServer(m: { t: string; [k: string]: unknown }): Promise<void> {
     switch (m.t) {
-      case 'challenge': {
-        this.events.onStatus('sign the seat in your wallet…');
-        try {
-          const sig = await this.opts.wallet.personalSign(String(m.message));
-          this.ws?.send(JSON.stringify({ t: 'auth', address: this.opts.wallet.snapshot().address, sig }));
-        } catch (e) { this.events.onStatus(`seat not signed: ${(e as Error).message}`); }
-        break;
-      }
       case 'seated':
+        this.you = (Number(m.side) === 1 ? 1 : 0);
         this.events.onStatus(Number(m.waiting) > 0 ? 'seated, waiting for the opponent…' : 'both seated, starting…');
         break;
       case 'start': {
         if (this.started) break;
         this.seed = String(m.seed);
+        this.matchId = String(m.matchId);
+        this.buildHash = (m.buildHash as string | null) ?? this.buildHash;
         this.participants = m.participants as [string, string];
+        this.you = this.participants[1] === this.playerId ? 1 : 0;
         this.state = this.rules.init(this.seed, this.participants);
         this.started = true;
         for (const e of (m.entries as LogEntry[]) ?? []) this.apply(e, false);
@@ -121,21 +125,29 @@ export class RelayMatch implements Match {
         this.apply(m.entry as LogEntry, true);
         this.setClock(Number(m.deadline), this.clock?.turnMs ?? 60_000);
         break;
-      case 'clock':
-        this.setClock(Number(m.deadline), Number(m.turnMs ?? this.clock?.turnMs ?? 60_000));
-        break;
       case 'reject':
         this.events.onStatus(`move rejected: ${String(m.reason)}`);
         break;
       case 'away':
         this.events.onStatus(`opponent disconnected; they concede in ${Math.round(Number(m.graceMs) / 1000)} s unless they return`);
         break;
-      case 'over':
+      case 'sign': {
+        // Sign the log THIS client recorded; the arcade shell recomputes the chain head from it.
+        if (!this.shell) { this.events.onStatus('match over (dev relay: unsigned)'); break; }
+        this.events.onStatus('signing the match ledger…');
+        try {
+          const sig = await this.shell.signLedger(String(m.matchId), (m.buildHash as string | null) ?? null, this.log);
+          this.ws?.send(JSON.stringify({ t: 'sig', sig }));
+          this.events.onStatus('settling on LitNode…');
+        } catch (e) { this.events.onStatus(`not signed: ${(e as Error).message}`); }
         break;
-      case 'settlement': {
-        const s: RelaySettlement = { matchId: String(m.matchId), winner: Number(m.winner) as Winner, logHash: String(m.logHash), sig: (m.sig as string | null) ?? null, seed: String(m.seed), entries: (m.entries as LogEntry[]) ?? [] };
-        this.settlement = s;
-        for (const cb of this.settlementListeners) cb(s);
+      }
+      case 'settled': {
+        const s: RelaySettled = { matchId: this.matchId, delta: (m.delta as Record<string, unknown> | null) ?? null, seed: String(m.seed ?? this.seed), entries: (m.entries as LogEntry[]) ?? this.log, dev: !!m.dev };
+        this.settled = s;
+        const d = s.delta as { attestation?: string; proof?: string; placed?: boolean } | null;
+        this.events.onStatus(d ? `settled on LitNode: ${d.proof ?? d.attestation ?? 'recorded'}${d.placed === false ? ' (unplaced, casual)' : ''}` : 'match over');
+        for (const cb of this.settledListeners) cb(s);
         break;
       }
       case 'error':
