@@ -2,3 +2,5 @@ node_modules/
 dist/
 .vercel/
 renders/avatars.log
+
+.vercel
