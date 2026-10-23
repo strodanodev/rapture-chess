@@ -7,3 +7,4 @@ renders/avatars.log
 DEPLOY.local.md
 contracts/artifacts/
 contracts/cache/
+.env
