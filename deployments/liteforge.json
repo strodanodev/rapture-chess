@@ -1,0 +1,15 @@
+{
+  "network": "liteforge",
+  "chainId": 4441,
+  "litNodeWager": {
+    "address": "0x743051a665471111c3c74EC9138B9fc516730e35",
+    "owner": "0x729A7da21DF1252E724C67Be415f36f2E1a9f626",
+    "nodeStake": "0x3CFe2D006d946A1E0E5Cf6B3E0958aFc3fF73717",
+    "matchBook": "0x90D642d1f1Cb00EBFeB2268dd13Dee32A2852e5b",
+    "profile": "0xe2cf46ab11eAfB18c1933409E35ae68CEce88882",
+    "unstakeDelay": 4000,
+    "litnodeGeneration": 3,
+    "tx": "0x328d4ad394eda2ffb83ee472470e9c6dd80786f8dea19f02d8946055f754ae33",
+    "deployedAt": "2026-10-23T11:51:22.683Z"
+  }
+}
