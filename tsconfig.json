@@ -13,5 +13,5 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "scripts/*.mjs"]
+  "include": ["src", "relay", "scripts/*.mjs"]
 }

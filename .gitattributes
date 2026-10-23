@@ -1,4 +1,4 @@
 # The LitNode ruleset is pinned by the hash of its bytes: never convert its line endings.
 rulesets/** -text
 titles/** -text
-* text=auto
+* text=auto eol=lf

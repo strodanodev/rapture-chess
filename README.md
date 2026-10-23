@@ -73,6 +73,12 @@ public/models             set.glb and the avatars; public/art the card paintings
 Rendering: pmndrs `postprocessing` (bloom, chromatic aberration, vignette, ACES, SMAA), `n8ao` ambient occlusion,
 `three.quarks` particles, a Reflector floor and a PMREM studio environment.
 
+## Live on LitNode
+
+The title is registered (`rapture-chess.v1`, build `cf604358…`), the escrow is deployed at
+`0x743051a665471111c3c74EC9138B9fc516730e35`, and a dedicated bonded node hosts the gauntlet. `GO-LIVE.md` is the
+operator runbook: node launcher, logon task, bond and announce, key rotation.
+
 ## Content
 
 Rapture characters, names, avatars and artwork are © LitVM Games, all rights reserved; the snapshot and art are

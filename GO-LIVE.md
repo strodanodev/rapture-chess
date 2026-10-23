@@ -204,3 +204,30 @@ npm run host -- verify
   which clears the Control Plane's variables and starts the supervised node. Remove with
   `Unregister-ScheduledTask -TaskName litnode-chess`. `host status` still says "service not installed" because it only
   looks for its own task name; the logon task is what keeps the node up.
+
+## Key rotation (the publisher key was pasted into a chat on 2026-10-23 and 2026-10-24: treat it as exposed)
+
+The wallet `0x729a…f626` holds three things: the title (TitleRegistry ERC-721), the node's bond (NodeStake operator) and
+the escrow's owner role. Move all three to a fresh wallet in one sitting, so the title owner and the bond operator stay the
+same address (the arcade lists the title only while they match). Fund the new wallet with a little zkLTC first; type keys,
+never paste them.
+
+```powershell
+cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
+# 1. title
+$env:PUBLISHER_KEY = "0x<old key>"
+npm run publish:title -- transfer "C:\Users\strodano\Documents\LitVM Games\CHESS\rulesets\rapture-chess.v1.js" 0x<new wallet>
+Remove-Item Env:PUBLISHER_KEY
+# 2. bond (NodeStake.transferOperator; the node keeps running, its announcer is unaffected)
+$env:DEPLOYER_KEY = "0x<old key>"
+node tools/transfer-operator.mjs a0b440f4c88fcda3dd8b5783cf23f06d16d408b162de24bf82aa5fad298e1175 0x<new wallet>
+Remove-Item Env:DEPLOYER_KEY
+# 3. escrow owner (fees and settings only; stakes and claims never depend on it)
+cd "C:\Users\strodano\Documents\LitVM Games\CHESS"
+$env:PRIVATE_KEY = "0x<old key>"; $env:NEW_OWNER = "0x<new wallet>"
+npx hardhat run scripts/transfer-wager-owner.cjs --network liteforge
+Remove-Item Env:PRIVATE_KEY, Env:NEW_OWNER
+```
+
+Then sweep whatever zkLTC and tLITVM remain in the old wallet, and check `npm run publish:title -- status …` and the node's
+`/titles` (`publisherHosts: 1, published: true` under the new owner). The escrow address and the site do not change.
