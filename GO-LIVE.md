@@ -1,216 +1,90 @@
-# Rapture Chess on LitNode: the three key-holder steps
+# Rapture Chess on LitNode: operator runbook
 
-Everything below is already built, tested and deployed except what needs your keys. Run these in PowerShell on this
-machine. Nothing writes a key to disk; set each one in the shell for the step that needs it and remove it after.
+Current state (2026-10-24) and the operations around it. Everything here is live unless marked otherwise.
 
-Paths used throughout:
+## What is live
 
-```
-CHESS   = C:\Users\strodano\Documents\LitVM Games\CHESS
-LITNODE = C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode   (public checkout, v0.12.0, npm install done)
-```
+| Piece | Where | State |
+|---|---|---|
+| Title `rapture-chess.v1` | TitleRegistry `0x4A0d…4489`, Liteforge 4441 | registered to `0x729a7da21df1252e724c67be415f36f2e1a9f626`, build `cf604358…` active (tx `0xf37bd7…`) |
+| Ruleset | `rulesets/rapture-chess.v1.js` (+ `.json`) | conformant, hash-pinned; rebuild with `pnpm title` only when the rules change, then `publish:title -- set-build` |
+| Escrow `LitNodeWager` | `0x743051a665471111c3c74EC9138B9fc516730e35` | owner `0x729a…f626`, unstake delay 4000 s, fee 0; the site carries it (`.env`) |
+| Site | https://rapture-chess.vercel.app | Vercel project `rapture-chess`, NPC team; redeploy: `pnpm build` then the `vercel deploy` line in DEPLOY.local.md |
+| Chess node `a0b440f4…` | this laptop, port 7811, gateway 8488, quick tunnel | 0.12.1 source checkout (`LITNODE\litnode`), bonded 1 tLITVM by `0x729a…f626`, announcer `0xf41c…d2d2f` delegated and funded, `/titles` shows `published: true` |
+| Logon task `litnode-chess` | Task Scheduler, current user | runs `C:\litvm\rapture-chess\start-chess-node.ps1` at logon |
 
-The title bundle is `CHESS\rulesets\rapture-chess.v1.js`, build hash
-`cf604358b9bf6e7faca935b158946f30f2404ec57fc4ffc712cf352bff54b660`. Rebuild it only if the rules change (`pnpm title`),
-and then re-register the new hash with `set-build`.
+## The two nodes on this laptop, and why chess stays on the dedicated one
 
-## 1. Register the title on TitleRegistry (publisher wallet)
+| | Control Plane node `50bb1da9…` | Chess node `a0b440f4…` |
+|---|---|---|
+| Port / gateway | 7801 / 8478 (upstream 8477) | 7811 / 8488 |
+| Version | 0.12.1, protocol 4 (auto-updated) | 0.12.1, protocol 4, updates off |
+| Bond | `0x8697…87b5` (StudioMinter admin) | `0x729a…f626` (the title's publisher) |
+| Chess ruleset | held (fetched by hash, since the title is registered) | loaded from `RULESETS` |
+| Chess gauntlet | none (`GAUNTLETS` lists Agent Fighter and Pickle Brawl) | `gauntlets/rapture-chess.json` |
+| Relay tunnel | **down**: nothing listens on 8477, so the gateway answers 502 at `/` and no `wsAddr` is advertised | up |
 
-Use the wallet that will also bond your host node: the arcade lists a title only while a bonded host from the
-publisher's wallet serves it. The wallet needs a little zkLTC on Liteforge (chain 4441) for gas.
+The arcade lists a title only while a bonded host from the publisher's wallet serves it, and placements prefer hosts
+that advertise a relay. Today only the chess node meets both, so it is the chess host. Folding chess into the Control
+Plane node would need, in this order: the Agent Fighter relay back on 8477 (or `RELAY_PORT` unset) so its tunnel
+advertises; `rapture-chess.v1=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json` appended to
+the user `GAUNTLETS` variable and a Control Plane restart; and the title transferred to `0x8697…87b5` (or that node
+re-bonded from `0x729a…f626`). Until then, two nodes.
 
-```powershell
-cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
-$env:PUBLISHER_KEY = "0x<publisher private key>"
-npm run publish:title -- status   "C:\Users\strodano\Documents\LitVM Games\CHESS\rulesets\rapture-chess.v1.js"
-npm run publish:title -- register "C:\Users\strodano\Documents\LitVM Games\CHESS\rulesets\rapture-chess.v1.js"
-npm run publish:title -- status   "C:\Users\strodano\Documents\LitVM Games\CHESS\rulesets\rapture-chess.v1.js"
-Remove-Item Env:PUBLISHER_KEY
-```
+Both nodes are bonded under different wallets, so they count as different operators for witnessing each other.
 
-Expected: `status` first shows no publisher; `register` mines a transaction (the script polls up to 60 s for the
-receipt); the final `status` shows your address as publisher and the build `cf604358…` as active.
-`rapture-chess.v1` is first come, first served: if `register` says it is already held by another address, stop and
-tell me.
-
-Later retunes: `npm run publish:title -- set-build <same file>` (active 60 s after mining).
-
-## 2. Deploy the escrow (any funded deployer wallet; it becomes the escrow owner)
+## Day to day
 
 ```powershell
-cd "C:\Users\strodano\Documents\LitVM Games\CHESS"
-$env:PRIVATE_KEY = "0x<deployer private key>"
-npx hardhat run scripts/deploy-wager.cjs --network liteforge
-Remove-Item Env:PRIVATE_KEY
-```
-
-The script reads LitNode's NodeStake, MatchBook and PlayerProfile addresses from `LITNODE\contracts\deployed.testnet.json`
-and writes `deployments\liteforge.json` under `litNodeWager`. Optional variables before the run:
-`$env:OWNER = "0x…"` (fee and settings owner; default the deployer), `$env:UNSTAKE_DELAY = "4000"` (seconds; must stay
-above MatchBook's total window of 3300 s).
-
-Then put the address into the site and redeploy it:
-
-```powershell
-cd "C:\Users\strodano\Documents\LitVM Games\CHESS"
-Set-Content -Encoding ascii .env "VITE_WAGER_ADDRESS=0x<escrow address from deployments\liteforge.json>"
-pnpm build
-vercel deploy --prod --yes --scope npc-31bbd654 --global-config "C:/Users/strodano/AppData/Local/vercel-npc"
-```
-
-Expected: https://rapture-chess.vercel.app shows the stake panel instead of "No escrow is configured".
-
-## 3. Host the title on your Control Plane node
-
-The Control Plane rewrites `node.env` on every start, so these go in as user environment variables, then quit the
-Control Plane from the tray and reopen it. First see what is already set, because `GAUNTLETS` is a comma-separated
-list and must keep any title already there (Pickle Brawl, for instance):
-
-```powershell
-Get-ChildItem Env: | Where-Object { $_.Name -in 'RULESETS','GAUNTLETS','GAUNTLET_GATEWAY_PORT','RELAY_PORT','SERVICES','COURTS' }
-```
-
-If `GAUNTLETS` is empty:
-
-```powershell
-setx RULESETS "C:/Users/strodano/Documents/LitVM Games/CHESS/rulesets/rapture-chess.v1.js"
-setx GAUNTLETS "rapture-chess.v1=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json"
-setx GAUNTLET_GATEWAY_PORT 8478
-```
-
-If `GAUNTLETS` or `RULESETS` already hold other titles, append with a comma instead, for example:
-
-```powershell
-setx RULESETS "<existing value>,C:/Users/strodano/Documents/LitVM Games/CHESS/rulesets/rapture-chess.v1.js"
-setx GAUNTLETS "<existing value>,rapture-chess.v1=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json"
-```
-
-Keep `RELAY_PORT=8477` if it is set (the gateway fronts it as upstream). Then quit and reopen the Control Plane, and check:
-
-```powershell
-curl.exe -s http://127.0.0.1:7801/titles
-curl.exe -s http://127.0.0.1:7801/health
-```
-
-Expected: `/titles` lists `rapture-chess.v1` with your address as `publisher` and `published: true` once the node is
-bonded; `/health` shows `rulesets: { "rapture-chess.v1": "cf604358…" }`. The node's log prints
-`ruleset rapture-chess.v1 @ cf604358b9bf loaded` and `gauntlet gateway on :8478 … rapture-chess.v1`.
-If the node is on another port, use that port in the two checks.
-
-The gauntlet config points at `CHESS` as its working directory; keep `pnpm install` current there, because the node
-runs `node node_modules/tsx/dist/cli.mjs relay/server.mts` from it for every match.
-
-## What happens next
-
-- A player opens the arcade, queues for Rapture Chess, and the mesh places the match on your node. The node spawns the
-  relay for that match, the page opens from `display.url` inside the arcade, seats through the shell, and both
-  players sign the ledger at the end. The node replays the log and settles it.
-- Ranked (on-chain) placements need four bonded operators under different wallets carrying the title. Until then
-  matches settle as casual, which the escrow still honours through the host node's signature.
-- A player stakes zkLTC against their arcade player key in the game's wager panel. After a match between two staked
-  keys settles, the panel fetches the node's delta and submits the claim; the winner receives the pot.
-
-## Step 3, revised (2026-10-23): the Control Plane node cannot load the title
-
-Verified in the Control Plane app's code: `writeNodeEnvironment` hard-codes
-`RULESETS=./rulesets/agent-fighter.v1.js,./rulesets/pickle-brawl.v1.js` into `node.env` on every start, and
-`start-node.cmd` sets every `node.env` line over the inherited environment, so a user `RULESETS` variable is ignored
-there. (`GAUNTLETS` passes through only because node.env has no such line.) That node is also on the 0.11 line
-(protocol 3), bonded by `0x8697…87b5`, not by the title's publisher `0x729a…f626`.
-
-The plug-and-play path is a dedicated node from the public 0.12 checkout, bonded from the publisher wallet:
-
-```powershell
-cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
-npm run host -- init --operator rapture-chess --roles mesh,host,witness,settler --port 7811 --region ap-southeast --tunnel quick --rulesets "C:/Users/strodano/Documents/LitVM Games/CHESS/rulesets/rapture-chess.v1.js" --home "C:/litvm/rapture-chess"
-Add-Content "C:/litvm/rapture-chess/node.env" "GAUNTLETS=rapture-chess.v1=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json`nGAUNTLET_GATEWAY_PORT=8488"
-```
-
-Caveat: the 0.12 supervisor lets the process environment win over node.env for known keys, and your user environment
-carries `GAUNTLETS`, `GAUNTLET_GATEWAY_PORT=8478` and `RELAY_PORT=8477` for the Control Plane node. Start the chess
-node from a shell that clears them, so it keeps its own values and does not fight over port 8478:
-
-```powershell
-Remove-Item Env:GAUNTLETS, Env:GAUNTLET_GATEWAY_PORT, Env:RELAY_PORT, Env:RULESETS -ErrorAction SilentlyContinue
-$env:LITNODE_HOME = "C:/litvm/rapture-chess"
-npm run host -- doctor
-npm run host -- start --detach
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\litvm\rapture-chess\start-chess-node.ps1 -Status   # stages, peers, bond, announcer
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\litvm\rapture-chess\start-chess-node.ps1 -Stop
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\litvm\rapture-chess\start-chess-node.ps1            # start (supervised)
 curl.exe -s http://127.0.0.1:7811/titles
+curl.exe -s http://127.0.0.1:8488/gateway
+Get-Content C:\litvm\rapture-chess\litnode.log -Tail 40
 ```
 
-Then bond and publish it from the publisher wallet (1 tLITVM on testnet, faucet in the cabinet), key in the shell only:
+The launcher clears `GAUNTLETS`, `GAUNTLET_GATEWAY_PORT`, `RELAY_PORT`, `RULESETS`, `SERVICES` and `COURTS` from the
+inherited environment first: the 0.12 supervisor lets the process environment override `node.env`, and those user
+variables belong to the Control Plane node. `host status` reports "service not installed" because it only looks for its
+own task name; the `litnode-chess` logon task is what keeps the node up (`Unregister-ScheduledTask -TaskName litnode-chess`
+removes it).
 
-```powershell
-$env:OPERATOR_KEY = "0x<publisher private key>"
-npm run host -- bond
-npm run host -- announce --fund 0.02
-npm run host -- publish
-Remove-Item Env:OPERATOR_KEY
-npm run host -- verify
-```
+Gas: the announcer `0xf41c…d2d2f` pays for commits and settlements (about 445k gas per hosted ranked match, 77k per
+witnessed one). The log prints `gas-low` when it runs short; top it up with `npm run host -- announce --fund 0.02`
+(OPERATOR_KEY in the shell) or a plain transfer to that address.
 
-For start-at-logon, `install-service` would inherit the clashing user variables; use a small launcher script that
-clears them first (as above) and register that with schtasks instead. Not yet done.
-
-## Dedicated node: running (2026-10-24)
-
-- Home `C:\litvm\rapture-chess` (node.env, litnode.log); code `LITNODE\litnode` (0.12.0, protocol 4); data in `LITNODE\litnode\data\rapture-chess`.
-- nodeId `a0b440f4c88fcda3dd8b5783cf23f06d16d408b162de24bf82aa5fad298e1175`, announcer `0xf41c9b338b8918a93cb22ef3957b28d4a4d42d2f`.
-- Port 7811, gauntlet gateway 8488 (chess only), quick tunnel advertised as wsAddr. `/titles` lists rapture-chess.v1 with owner 0x729a…f626.
-- Launcher: `C:\litvm\rapture-chess\start-chess-node.ps1` (`-Stop`, `-Status`); it clears the Control Plane's GAUNTLETS/ports/SERVICES
-  variables before starting. For start at logon register that script with schtasks (command in the script header).
-
-Bond and publish it from the publisher wallet (1 tLITVM on testnet; the key stays in the shell):
+Updates: `LITNODE_NO_UPDATE=1` is set in `C:\litvm\rapture-chess\node.env` because the node's self-update replaces the
+git checkout with the portable release, which drops `tools/`. Update by hand:
 
 ```powershell
 cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
-Remove-Item Env:GAUNTLETS, Env:GAUNTLET_GATEWAY_PORT, Env:RELAY_PORT, Env:RULESETS, Env:SERVICES, Env:COURTS -ErrorAction SilentlyContinue
-$env:LITNODE_HOME = "C:/litvm/rapture-chess"
-$env:OPERATOR_KEY = "0x<publisher private key>"
-npm run host -- bond
-npm run host -- announce --fund 0.02
-npm run host -- publish
-Remove-Item Env:OPERATOR_KEY
-npm run host -- verify
+git pull && npm install
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\litvm\rapture-chess\start-chess-node.ps1 -Stop
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\litvm\rapture-chess\start-chess-node.ps1
 ```
 
-## Bonded (2026-10-24); announce still to do
+Node files: `C:\litvm\rapture-chess\node.env` (config), `C:\litvm\rapture-chess\litnode.log`,
+`LITNODE\litnode\data\rapture-chess\` (identity, ledgers, deltas). Back up `identity.json` there: it is the node key the
+bond is behind.
 
-- `bond` landed: 1 tLITVM behind node a0b440f4… for operator 0x729a…f626, active (tx 0xf63af3a2…).
-- The node's self-update replaced the git checkout with the 0.12.1 *portable* release, which ships no `tools/set-announcer.mjs`,
-  so `announce` failed. The checkout was reset to `origin/master` (0.12.1 source, all tools) and `LITNODE_NO_UPDATE=1`
-  was added to `C:\litvm\rapture-chess\node.env` so the hourly update check stays off. Update by `git pull` + restart instead.
+## How a match runs
 
-Re-run the announce (delegates and funds the node's gas key `0xf41c…d2d2f`; the key stays in the shell):
-
-```powershell
-cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
-Remove-Item Env:GAUNTLETS, Env:GAUNTLET_GATEWAY_PORT, Env:RELAY_PORT, Env:RULESETS, Env:SERVICES, Env:COURTS -ErrorAction SilentlyContinue
-$env:LITNODE_HOME = "C:/litvm/rapture-chess"
-$env:OPERATOR_KEY = "0x<publisher private key>"
-npm run host -- announce --fund 0.02
-Remove-Item Env:OPERATOR_KEY
-npm run host -- publish
-npm run host -- verify
-```
-
-## Live (2026-10-24)
-
-- Announcer `0xf41c…d2d2f` delegated (tx 0xffaf740a…) and funded 0.02 zkLTC (tx 0x2749dbee…).
-- `/titles` on the chess node: `rapture-chess.v1` owner 0x729a…f626, `publisherHosts: 1`, `bondedHosts: 4`, **`published: true`**.
-  The arcade lists the title while this node is up and bonded. Keep the node running (launcher + schtasks for logon).
-- Top up the announcer when the node logs `gas-low` (each hosted ranked match costs it ~445k gas; witnessing ~77k).
-- Logon task `litnode-chess` (Task Scheduler, current user, at logon) runs `C:\litvm\rapture-chess\start-chess-node.ps1`,
-  which clears the Control Plane's variables and starts the supervised node. Remove with
-  `Unregister-ScheduledTask -TaskName litnode-chess`. `host status` still says "service not installed" because it only
-  looks for its own task name; the logon task is what keeps the node up.
+1. A player queues for Rapture Chess in the arcade; the mesh places the match on a host.
+2. The host node spawns `relay/server.mts` for that match (`node_modules/tsx/dist/cli.mjs` from the CHESS checkout, so keep
+   `pnpm install` current there), mints seat tickets and proxies `wss://<wsAddr>/<room>`.
+3. The arcade opens https://rapture-chess.vercel.app/ with `?match&ws&room&player&build`; the page claims its seat through
+   the shell, plays, and at the end both players sign the ledger (`cabinet:sign`).
+4. The relay posts `/ledger`; the node replays the log in its sandbox and settles. Ranked placed matches also go to
+   MatchBook (commit, settle, witness attests, finalize). Casual ones settle on the node only.
+5. A stake pays out from the node's signed delta: the wager panel fetches `GET /delta/<matchId>` from the host and submits
+   `claim` to the escrow (about 3.3M gas).
 
 ## Key rotation (the publisher key was pasted into a chat on 2026-10-23 and 2026-10-24: treat it as exposed)
 
-The wallet `0x729a…f626` holds three things: the title (TitleRegistry ERC-721), the node's bond (NodeStake operator) and
-the escrow's owner role. Move all three to a fresh wallet in one sitting, so the title owner and the bond operator stay the
-same address (the arcade lists the title only while they match). Fund the new wallet with a little zkLTC first; type keys,
-never paste them.
+`0x729a…f626` holds the title, the chess node's bond and the escrow's owner role. Move all three to a fresh wallet in
+one sitting so the title owner and the bond operator keep matching. Fund the new wallet with a little zkLTC first; type
+keys, never paste them.
 
 ```powershell
 cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
@@ -229,5 +103,19 @@ npx hardhat run scripts/transfer-wager-owner.cjs --network liteforge
 Remove-Item Env:PRIVATE_KEY, Env:NEW_OWNER
 ```
 
-Then sweep whatever zkLTC and tLITVM remain in the old wallet, and check `npm run publish:title -- status …` and the node's
-`/titles` (`publisherHosts: 1, published: true` under the new owner). The escrow address and the site do not change.
+Then sweep what remains in the old wallet and confirm with `npm run publish:title -- status …` and the node's `/titles`
+(`publisherHosts: 1, published: true` under the new owner). The escrow address and the site do not change.
+
+## Not yet exercised
+
+- A match through the live arcade end to end (two browsers, two player keys): seat ticket, gauntlet, ledger
+  signatures, node settlement. The same path was tested against a local node and a dev relay only.
+- A stake and claim on testnet against a real delta.
+- A ranked placement for chess (needs four bonded operators carrying the title; `/titles` shows three bonded hosts).
+
+## History
+
+- 2026-10-23: title registered; escrow deployed and wired into the site; the Control Plane node (then 0.11.29) could not
+  load the title because its app hard-codes `RULESETS`.
+- 2026-10-24: dedicated node initialised, bonded, announced, published; self-update clobbered the checkout once
+  (reset to `origin/master`, updates off); logon task registered.
