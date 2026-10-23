@@ -2,7 +2,7 @@
 import type { Card } from '../../roster';
 import { ELEMENT_COLOR, power } from '../../roster';
 import type { App } from '../app';
-import { championCard, RARITY, ROLE_OF, statRows } from '../cardview';
+import { championCard, identityTags, loreBlock, provenance, ROLE_OF } from '../cardview';
 import { h, icon, modal } from '../dom';
 import { go, pageHead, type Screen } from '../router';
 import { walletChip } from '../widgets';
@@ -29,11 +29,11 @@ export function armoryScreen(app: App): Screen {
     const sheet = h('div', { class: 'sheet' },
       h('div', { class: 'sheet-card' }, championCard(c, { owned, eager: true, tilt: true })),
       h('div', { class: 'sheet-info' },
-        h('div', { class: 'sheet-tags' }, h('span', { class: 'badge', text: RARITY[c.kind] }), h('span', { class: 'badge outline', text: c.element }), h('span', { class: 'badge outline', text: c.faction })),
+        identityTags(c),
         h('p', { class: 'epithet', text: c.epithet }),
-        h('p', { class: 'kicker', text: `Fights as ${ROLE_OF[c.kind]} · ${c.kind}` }),
-        statRows(c),
-        h('p', { class: 'hint tabnum', text: `Power ${power(c).toLocaleString()}` }),
+        h('p', { class: 'kicker', text: `${c.kind} · fights as ${ROLE_OF[c.kind]}` }),
+        loreBlock(c),
+        provenance(c),
         owned ? h('p', { class: 'hint ok' }, icon('check'), 'In your wallet: seated first in every army you field.')
           : h('button', { class: 'btn sm', on: { click: () => { m.close(); void go('shop'); } } }, icon('bag'), 'Find it in a pack')));
     const m = modal(c.name, sheet, { wide: true });

@@ -16,6 +16,31 @@ export interface Card {
   faction: 'Alliance' | 'Horde';
   stats: { str: number; agi: number; res: number; int: number };
   art: string;
+  /** Lore and provenance from the token itself (scripts/lore-snapshot.mjs); absent in an older snapshot. */
+  lore?: CardLore;
+}
+/** What the token's on-chain metadata says about the champion, and the soul file its keccak256 pins. */
+export interface CardLore {
+  bio: string | null;
+  path: string | null;
+  alignment: string | null;
+  frame: string | null;
+  kit: string | null;
+  /** From the soul: its own line, how it speaks, what it holds to, its temper, how it fights, where it breaks. */
+  quote: string | null;
+  /** The champion's story, in souls written as prose. */
+  story?: string | null;
+  voice: string | null;
+  values: string | null;
+  temperament: string | null;
+  battle: string | null;
+  weakness: string | null;
+  soulHash: string | null;
+  designHash: string | null;
+  artHash: string | null;
+  avatarHash: string | null;
+  /** The soul's keccak256 matched the hash the token pins when it was snapshotted. */
+  soulVerified: boolean;
 }
 export interface Collection {
   collection: { name: string; chainId: number; rpc: string; address: string; explorer: string; setId: number; count: number };

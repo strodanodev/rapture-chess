@@ -180,6 +180,28 @@
 .sheet-card { perspective: 900px; }
 .sheet-info { display: grid; gap: 14px; }
 .sheet-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+/* champion identity, lore and provenance (cardview.ts) */
+.id-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge.rarity { color: #160f05; background: var(--rc, var(--gold-2)); }
+.badge.rarity[data-kind='God'] { --rc: linear-gradient(180deg, #ffe3a3, var(--r-god)); box-shadow: 0 0 12px rgba(255, 181, 71, 0.35); }
+.badge.rarity[data-kind='Titan'] { --rc: var(--r-titan); }
+.badge.rarity[data-kind='King'] { --rc: var(--r-king); }
+.badge.rarity[data-kind='Demigod'] { --rc: var(--r-demigod); }
+.badge.rarity[data-kind='Mortal'] { --rc: var(--r-mortal); }
+.badge.el::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--dotc); box-shadow: 0 0 6px var(--dotc); }
+.lore { display: grid; gap: 12px; }
+.lore-quote { position: relative; margin: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--accent); font-style: italic; font-size: 14px; line-height: 1.55; color: #e9dfcc; }
+.lore-story { margin: 0; font-size: 14px; line-height: 1.65; color: #e3d9c6; }
+.lore-story::first-letter { float: left; margin: 4px 8px 0 0; font-family: var(--font-display); font-size: 40px; line-height: 0.8; color: var(--gold-2); }
+.lore-line { margin: 0; font-size: 13px; line-height: 1.6; color: #cfc5b2; }
+.lore-line .k { display: block; margin-bottom: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-2); font-style: normal; }
+.lore.compact .lore-quote { font-size: 12.5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.prov { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 0; padding-top: 10px; border-top: 1px solid rgba(255, 201, 94, 0.12); }
+.prov dt { align-self: center; font-size: 10px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+.prov dd { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 11.5px; color: #d6cdbc; cursor: copy; }
+.prov dd span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prov dd:hover span { color: var(--gold-1); }
+.prov dd svg { flex: none; width: 12px; height: 12px; color: var(--ok); }
 .stats { display: grid; gap: 9px; }
 .stat { display: grid; grid-template-columns: 84px 1fr 56px; align-items: center; gap: 10px; font-size: 12px; }
 .stat .k { color: var(--muted); letter-spacing: 0.06em; }

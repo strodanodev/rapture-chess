@@ -60,9 +60,11 @@
 .ins-body { display: grid; gap: 8px; }
 .ins-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ins-head b { font-size: 16px; }
-.inspect .stats { gap: 6px; }
-.inspect .stat { grid-template-columns: 66px 1fr 46px; font-size: 11px; }
-.inspect .meter { height: 4px; }
+.inspect .id-tags { gap: 4px; }
+.inspect .id-tags .badge { height: 18px; padding: 0 6px; font-size: 9px; }
+.inspect .eyebrow { margin: 0; }
+.inspect .prov { gap: 4px 10px; padding-top: 8px; }
+.inspect .prov dd { font-size: 11px; }
 
 /* ------------------------------------------------------------------ chronicle */
 .chronicle { position: absolute; right: calc(var(--safe-r) + 18px); top: calc(var(--safe-t) + 92px); bottom: calc(var(--safe-b) + 92px); width: 220px; display: flex; flex-direction: column; overflow: hidden; transition: transform 0.35s var(--ease-out), opacity 0.35s; }
@@ -163,10 +165,10 @@
   .ins-card .ccard { aspect-ratio: 5 / 6.4; padding: 2px; }
   .ins-card .ccard .cplate, .ins-card .ccard .kind, .ins-card .badge.owned { display: none; }
   .ins-card .ccard .gem { width: 14px; height: 14px; top: 5px; right: 5px; }
-  .inspect .epithet { display: none; }
-  .inspect .stats { grid-template-columns: 1fr 1fr; gap: 4px 12px; }
-  .inspect .stat { grid-template-columns: 1fr; gap: 2px; }
-  .inspect .stat .v { display: none; }
+  .inspect .epithet, .inspect .eyebrow { display: none; }
+  .inspect .lore-quote { font-size: 12px; -webkit-line-clamp: 2; line-clamp: 2; }
+  .inspect .prov { padding-top: 6px; }
+  .inspect .prov:has(dt:nth-of-type(2)) > :is(dt, dd):first-of-type { display: none; } /* the soul hash, not the token number */
   .ins-head b { font-size: 14px; }
   .chronicle { right: calc(var(--safe-r) + 10px); left: calc(var(--safe-l) + 10px); top: auto; bottom: calc(var(--safe-b) + 146px); width: auto; height: 34vh; z-index: 3; }
   .chronicle.closed { transform: translateY(20px); }

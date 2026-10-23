@@ -8,7 +8,7 @@
 import type { Card } from '../roster';
 import { ELEMENT_COLOR, PIECE_NAME } from '../roster';
 import type { PieceType, Side } from '../rules/chessRules';
-import { ART, championCard, statRows } from './cardview';
+import { ART, championCard, identityTags, loreBlock, provenance } from './cardview';
 import { embers, h, icon, stagger } from './dom';
 import { prefs, setPref } from './prefs';
 import type { Screen } from './router';
@@ -208,8 +208,10 @@ export class Hud {
       h('div', { class: 'ins-body' },
         h('div', { class: 'ins-head' }, h('b', { class: 'display', text: card.name }), held ? h('span', { class: 'badge', text: 'Held' }) : null),
         h('p', { class: 'epithet', text: card.epithet }),
-        h('p', { class: 'eyebrow', text: `${PIECE_NAME[type]} · ${card.kind} · ${card.element} · ${side === 0 ? 'Alliance' : 'Horde'}` }),
-        statRows(card)));
+        h('p', { class: 'eyebrow', text: `Fights as ${PIECE_NAME[type]} for the ${side === 0 ? 'Alliance' : 'Horde'}` }),
+        identityTags(card, { compact: true }),
+        loreBlock(card, { compact: true }),
+        provenance(card, { compact: true })));
     this.inspect.classList.remove('pop'); void this.inspect.offsetWidth; this.inspect.classList.add('pop');
   }
 
