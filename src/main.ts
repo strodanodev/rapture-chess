@@ -1,6 +1,7 @@
 /**
  * Rapture Chess: the Rapture ARC 1 champions play chess on a Blender-built board, rendered with three.js.
  * Deckwright brings the wallet, the collection snapshot and the replayable match log; chess.js brings the rules.
+ * Matches run against the worker bot, or over the relay for two players who may have wagered zkLTC on it.
  */
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
@@ -9,10 +10,13 @@ import { Stage } from './scene/stage';
 import { BoardView, squareToWorld, worldToSquare } from './scene/board';
 import { Army, PieceView } from './scene/pieces';
 import { VFX } from './scene/vfx';
+import { Realm, type RealmId } from './scene/realm';
 import { loadSet, preloadAvatars } from './scene/assets';
 import { Hud } from './ui/hud';
-import { LocalMatch } from './game/session';
-import { encodeMove, type PieceType, type Side } from './rules/chessRules';
+import { LocalMatch, type Match, type MatchEvents } from './game/session';
+import { RelayMatch } from './game/relay';
+import { mountWager, type RelayStart, type WagerPanel } from './wager';
+import { encodeMove, type ChessState, type PieceType, type Side } from './rules/chessRules';
 import { buildRoster, ELEMENT_COLOR, type Card, type Collection } from './roster';
 import { createWeb3Link } from './web3/wallet';
 
@@ -22,7 +26,8 @@ let stage: Stage | null = null;
 let board: BoardView | null = null;
 let army: Army | null = null;
 let vfx: VFX | null = null;
-let match: LocalMatch | null = null;
+let realm: Realm | null = null;
+let match: Match | null = null;
 let you: Side = 0;
 let selected: PieceView | null = null;
 let legal: Move[] = [];
@@ -45,26 +50,38 @@ hud.bind({
   onFlip: () => { void flyToSide(you === 0 ? 1 : 0, true); },
   onConcede: () => { if (match && !match.state.over) match.concede(); },
   onPromotion: (piece) => { if (pendingPromotion) { void playMove(pendingPromotion.from, pendingPromotion.to, piece); pendingPromotion = null; } },
+  onQuality: (q) => { stage?.choose(q as never); },
 });
+hud.setQualityChoice(localStorage.getItem('rapture-chess.quality') ?? 'auto');
+
+// the wager panel lives on the title screen and moves into the HUD during a match
+const wager: WagerPanel = mountWager({ root: document.getElementById('wager-title')!, web3, onStartRelayMatch: (o) => { void startRelay(o); } });
+const placeWager = (slot: 'wager-title' | 'wager-hud') => {
+  const from = slot === 'wager-hud' ? 'wager-title' : 'wager-hud';
+  const box = document.getElementById(from)?.firstElementChild;
+  if (box) document.getElementById(slot)!.append(box);
+};
 
 // ------------------------------------------------------------------ stage and board (built once)
 async function ensureStage(): Promise<void> {
   if (stage) return;
   stage = new Stage(canvas);
   vfx = new VFX(stage.scene);
+  realm = new Realm(stage);
   const set = await loadSet();
   board = new BoardView(set);
   stage.scene.add(board.group);
   army = new Army(board.plinths, vfx);
   stage.scene.add(army.group);
-  stage.onUpdate((dt, t) => { board!.update(dt); army!.update(dt, t); vfx!.update(dt); });
+  stage.onUpdate((dt, t) => { board!.update(dt); army!.update(dt, t); vfx!.update(dt); realm!.update(dt, t); });
+  stage.onQuality((q, fps) => { hud.setFps(fps, q); vfx!.rich = q !== 'low'; });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   stage.start();
   if (import.meta.env.DEV) {
     // debug hook for the browser console: screen position of a square, and the live objects
     (window as unknown as { rc: unknown }).rc = {
-      get stage() { return stage; }, get army() { return army; }, get match() { return match; },
+      get stage() { return stage; }, get army() { return army; }, get match() { return match; }, get realm() { return realm; },
       screen(sq: string) {
         const v = squareToWorld(sq, 0.3).project(stage!.camera), r = canvas.getBoundingClientRect();
         return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
@@ -73,52 +90,96 @@ async function ensureStage(): Promise<void> {
   }
 }
 
+/** The realm for a game: the title choice, or the player's side (Alliance in Valhalla, Horde in the Underworld). */
+function realmFor(side: Side): RealmId {
+  const c = hud.realmChoice();
+  return c === 'valhalla' || c === 'underworld' ? c : side === 0 ? 'valhalla' : 'underworld';
+}
+
 // ------------------------------------------------------------------ a game
 let seedCounter = 0;
-async function startGame(side: Side): Promise<void> {
+
+/** Common setup for any match: the stage, the realm, the two armies for a seed, the HUD. */
+async function prepare(side: Side, seed: string, loadingText: string): Promise<void> {
   you = side;
   hud.showTitle(false);
   hud.showOver(null);
   hud.loading('Raising the board…', 0.05);
   await ensureStage();
+  stage!.governing = false;
   match?.close();
   army!.clear();
   fallen[0] = []; fallen[1] = [];
   clearSelection();
   board!.setLastMove(null, null); board!.setCheck(null);
+  const r = realmFor(side);
+  await realm!.load(r);
+  vfx!.embers(new THREE.Color(realm!.preset.embers));
 
-  // seed: wallet + time, like a placement seed; the log replays from it
-  const seed = `${web3.wallet.snapshot().address ?? 'guest'}:${Date.now().toString(16)}:${seedCounter++}`;
   const rosters = [buildRoster(snapshot.cards, 0, web3.owned, seed), buildRoster(snapshot.cards, 1, web3.owned, seed)] as const;
   const types = new Map<string, PieceType>();
   for (const [sq, p] of new Chess().board().flat().map((p, i) => [`${'abcdefgh'[i % 8]}${8 - Math.floor(i / 8)}`, p] as const)) if (p) types.set(sq, p.type);
-  hud.loading('Summoning champions…', 0.1);
+  hud.loading(loadingText, 0.1);
   const slugs = [...rosters[0].values(), ...rosters[1].values()].map((c) => c.slug);
-  await preloadAvatars(slugs, (done, total) => hud.loading(`Summoning champions… ${done}/${total}`, 0.1 + 0.85 * (done / total)));
+  await preloadAvatars(slugs, (done, total) => hud.loading(`${loadingText} ${done}/${total}`, 0.1 + 0.85 * (done / total)));
   await army!.muster(0, rosters[0], types);
   await army!.muster(1, rosters[1], types);
   hud.loading(null);
   hud.showHud(true);
+  placeWager('wager-hud');
+  setTimeout(() => { if (stage) stage.governing = true; }, 3000); // let the first frames settle (shader compiles) before judging
   hud.setMoves([]);
   hud.setCaptured(0, []); hud.setCaptured(1, []);
   hud.showCard(null, null, false, null);
   stage!.setAccentColors(side === 0 ? 0x38a8ff : 0xff6a2a, side === 0 ? 0xff6a2a : 0x38a8ff);
+}
 
-  match = new LocalMatch(seed, you, {
-    onStep: (_entry, move, state) => { void onStep(move, state.sans); },
-    onStatus: (text) => hud.setStatus(text),
-  });
+const events: MatchEvents = {
+  onStep: (_entry, move, state) => { void onStep(move, state); },
+  onStatus: (text) => hud.setStatus(text),
+};
+
+async function startGame(side: Side): Promise<void> {
+  // seed: wallet + time, like a placement seed; the log replays from it
+  const seed = `${web3.wallet.snapshot().address ?? 'guest'}:${Date.now().toString(16)}:${seedCounter++}`;
+  await prepare(side, seed, 'Summoning champions…');
+  match = new LocalMatch(seed, you, events);
   hud.setTurn(0, you, false);
   hud.setStatus(you === 0 ? 'Alliance opens. Pick a champion.' : 'The Alliance opens…');
   await flyToSide(you, false);
   match.poke();
 }
 
-async function onStep(move: Move | null, sans: string[]): Promise<void> {
+/** A two-player match over the relay (friendly or wagered). Both sides build the armies from the relay's seed. */
+async function startRelay(o: RelayStart): Promise<void> {
+  hud.showTitle(false);
+  hud.loading('Joining the match…', 0.02);
+  const m = new RelayMatch({ url: o.url, matchId: o.matchId, side: o.side, seed: o.seed, wallet: web3.wallet, events });
+  m.onSettlement((s) => wager.showSettlement(s));
+  m.onClock((c) => wager.showClock(c));
+  match?.close();
+  match = m;
+  // the relay reveals the seed when both seats are taken; the armies are drawn from it on both screens
+  hud.loading('Waiting for the opponent…', 0.04);
+  while (!m.seed) await new Promise((r) => setTimeout(r, 250));
+  await prepare(o.side, m.seed, 'Summoning champions…');
+  match = m; // prepare() closed nothing (match was already m), keep it current
+  hud.setTurn(m.state.turn, you, m.state.over);
+  hud.setStatus(you === 0 ? 'Alliance opens. Pick a champion.' : 'The Alliance opens…');
+  await flyToSide(you, false);
+  // moves that arrived while the armies loaded are already in the state: play them onto the board
+  const replay = new Chess();
+  for (const san of m.state.sans) { const mv = replay.move(san); if (mv) await army!.apply(mv); }
+  hud.setMoves(m.state.sans);
+  if (m.state.over) hud.showOver(m.state.winner === 2 ? 'Draw' : m.state.winner === you ? 'Victory' : 'Defeat', m.state.reason);
+  else if (m.state.turn !== you) hud.setStatus('Waiting for the opponent…');
+}
+
+async function onStep(move: Move | null, state: ChessState): Promise<void> {
   const m = match!;
   busy = true;
   clearSelection();
-  hud.setMoves(sans);
+  hud.setMoves(state.sans);
   if (move) {
     const mover = army!.at(move.from);
     const victimSquare = move.flags.includes('e') ? `${move.to[0]}${move.from[1]}` : move.to;
@@ -134,12 +195,13 @@ async function onStep(move: Move | null, sans: string[]): Promise<void> {
     }
   }
   busy = false;
-  const state = m.state;
+  if (match !== m) return; // a new game started while animating
   hud.setTurn(state.turn, you, state.over);
   const pos = new Chess(state.fen);
+  const kingOf = (side: Side) => [...army!.pieces.values()].find((p) => p.type === 'k' && p.side === side);
   if (!state.over && pos.inCheck()) {
-    const king = [...army!.pieces.values()].find((p) => p.type === 'k' && p.side === state.turn);
-    if (king) board!.setCheck(king.square);
+    const king = kingOf(state.turn);
+    if (king) { board!.setCheck(king.square); vfx!.check(king.group.position); }
     hud.toast('Check!');
   }
   if (state.over) {
@@ -147,7 +209,8 @@ async function onStep(move: Move | null, sans: string[]): Promise<void> {
     const title = draw ? 'Draw' : youWon ? 'Victory' : 'Defeat';
     const detail = draw ? `Drawn by ${state.reason}.` : `${state.winner === 0 ? 'The Alliance' : 'The Horde'} wins by ${state.reason}. ${state.sans.length} moves recorded in the match log.`;
     hud.setStatus(detail);
-    hud.showOver(title, detail);
+    if (!draw) { const king = kingOf(state.winner as Side); if (king) vfx!.finale(king.group.position, king.color); }
+    setTimeout(() => { if (match === m) hud.showOver(title, detail); }, draw ? 600 : 2200);
     console.info('[chess] match log', JSON.stringify({ seed: m.seed, log: m.log }));
     return;
   }
@@ -168,8 +231,12 @@ function cast(ev: PointerEvent): { piece: PieceView | null; square: string | nul
   return { piece, square: piece?.square ?? (hitBoard ? worldToSquare(hitBoard.point) : null) };
 }
 
+let hoverAt = 0;
 function onPointerMove(ev: PointerEvent): void {
   if (!match || !board) return;
+  const now = performance.now();
+  if (now - hoverAt < 40) return; // hover picking at 25 Hz is plenty
+  hoverAt = now;
   const { square } = cast(ev);
   board.setHover(square);
   canvas.style.cursor = square && (selected || army!.at(square)?.side === you) ? 'pointer' : 'default';

@@ -5,3 +5,5 @@ renders/avatars.log
 
 .vercel
 DEPLOY.local.md
+contracts/artifacts/
+contracts/cache/

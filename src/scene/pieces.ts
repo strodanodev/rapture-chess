@@ -129,14 +129,17 @@ export class PieceView {
   }
 
   /** Glide to a square along an arc (knights leap higher). */
-  async moveTo(square: string, leap = false): Promise<void> {
+  async moveTo(square: string, leap = false, vfx?: VFX): Promise<void> {
     const from = this.group.position.clone(), to = squareToWorld(square);
     this.square = square;
     const h = leap ? 1.1 : 0.35, d = from.distanceTo(to);
+    const trail = vfx?.trail(this.color);
     await tweens.run(0.42 + Math.min(0.3, d * 0.04), (k) => {
       this.group.position.lerpVectors(from, to, k);
       this.group.position.y = Math.sin(k * Math.PI) * h;
+      if (trail) { trail.emitter.position.copy(this.group.position); trail.emitter.position.y += PLINTH_TOP[this.type] + 0.3; }
     }, ease.inOutCubic);
+    trail?.stop();
     this.group.position.copy(to);
   }
 
@@ -144,7 +147,7 @@ export class PieceView {
   async fall(vfx: VFX): Promise<void> {
     this.play('hit', 1.4);
     await wait(0.25);
-    vfx.burst(this.group.position, this.color);
+    vfx.burst(this.group.position, this.color, this.side === 0);
     this.play('death', 2.2);
     for (const m of this.materials) { m.transparent = true; m.depthWrite = false; }
     await tweens.run(0.7, (k) => {
@@ -209,8 +212,8 @@ export class Army {
     const rook = castle ? this.pieces.get(castle.from) : undefined;
     if (rook && castle) { this.pieces.delete(castle.from); this.pieces.set(castle.to, rook); }
 
-    const jobs: Promise<void>[] = [piece.moveTo(move.to, move.piece === 'n')];
-    if (rook && castle) jobs.push(rook.moveTo(castle.to));
+    const jobs: Promise<void>[] = [piece.moveTo(move.to, move.piece === 'n', this.vfx)];
+    if (rook && castle) jobs.push(rook.moveTo(castle.to, false, this.vfx));
     await Promise.all(jobs);
     if (victim) {
       piece.play('attack', 1.6);

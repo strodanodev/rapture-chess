@@ -13,6 +13,7 @@ export interface HudHandlers {
   onFlip(): void;
   onConcede(): void;
   onPromotion(piece: PieceType): void;
+  onQuality(q: string): void;
 }
 
 export class Hud {
@@ -28,7 +29,13 @@ export class Hud {
     $('btn-flip').onclick = () => h.onFlip();
     $('btn-concede').onclick = () => h.onConcede();
     for (const b of $('promo').querySelectorAll<HTMLButtonElement>('button')) b.onclick = () => { $('promo').hidden = true; h.onPromotion(b.dataset.piece as PieceType); };
+    for (const id of ['quality', 'quality-title']) $<HTMLSelectElement>(id).onchange = (e) => { const v = (e.target as HTMLSelectElement).value; this.setQualityChoice(v); h.onQuality(v); };
   }
+
+  /** The realm picked on the title screen: 'auto' (by side), 'valhalla' or 'underworld'. */
+  realmChoice(): string { return $<HTMLSelectElement>('realm').value; }
+  setQualityChoice(v: string): void { for (const id of ['quality', 'quality-title']) $<HTMLSelectElement>(id).value = v; }
+  setFps(fps: number, quality: string): void { $('fps').textContent = `${Math.round(fps)} fps · ${quality}`; }
 
   showTitle(on: boolean): void { $('title').hidden = !on; }
   showHud(on: boolean): void { $('hud').hidden = !on; }

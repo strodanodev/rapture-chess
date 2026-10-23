@@ -17,11 +17,20 @@
     <h1>Rapture <span>Chess</span></h1>
     <p class="t-lede">The fifty champions of Rapture ARC 1 take the board. Alliance holds the ivory, Horde the obsidian: Gods on the thrones, Titans in the towers, Kings and Demigods at their sides, Mortals on the line.</p>
     <p id="title-holdings" class="t-fine">Connect a Liteforge wallet to field the champions you hold.</p>
+    <div class="t-options">
+      <label>Realm
+        <select id="realm"><option value="auto">By side</option><option value="valhalla">Valhalla</option><option value="underworld">Underworld</option></select>
+      </label>
+      <label>Quality
+        <select id="quality-title"><option value="auto">Auto (60 fps)</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option></select>
+      </label>
+    </div>
     <div class="t-actions">
       <button id="play-alliance" class="btn primary">Play as Alliance</button>
       <button id="play-horde" class="btn">Play as Horde</button>
       <button id="wallet-title" class="btn ghost">Connect wallet</button>
     </div>
+    <div id="wager-title" class="wager-slot"></div>
     <p class="t-fine made">Built with <a href="https://github.com/strodanodev/deckwright" rel="noopener">Deckwright</a> · three.js · Rapture ARC 1 on LitVM Liteforge</p>
   </div>
 </div>
@@ -55,6 +64,7 @@
     <div class="fallen"><span class="label">Fallen · Alliance</span><div id="fallen-alliance" class="strip"></div></div>
     <div class="fallen"><span class="label">Fallen · Horde</span><div id="fallen-horde" class="strip"></div></div>
     <div id="moves" class="moves"></div>
+    <div id="wager-hud" class="wager-slot"></div>
   </aside>
 
   <div id="promo" class="promo" hidden>
@@ -67,6 +77,8 @@
     <button id="btn-flip" class="btn small">Flip view</button>
     <button id="btn-concede" class="btn small danger">Concede</button>
     <button id="wallet" class="btn small ghost">Connect wallet</button>
+    <select id="quality" class="btn small" title="Render quality"><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option></select>
+    <span id="fps" class="fps" title="Frames per second"></span>
   </footer>
   <div id="toast" class="toast"></div>
 </div>

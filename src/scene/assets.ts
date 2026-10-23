@@ -10,6 +10,7 @@ const loader = new GLTFLoader().setDRACOLoader(draco).setMeshoptDecoder(MeshoptD
 const avatars = new Map<string, Promise<GLTF>>();
 
 export const loadSet = (): Promise<GLTF> => loader.loadAsync(`${import.meta.env.BASE_URL}models/set.glb`);
+export const loadModel = (file: string): Promise<GLTF> => loader.loadAsync(`${import.meta.env.BASE_URL}models/${file}`);
 
 export function loadAvatar(slug: string): Promise<GLTF> {
   let p = avatars.get(slug);

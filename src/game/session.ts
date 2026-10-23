@@ -7,13 +7,31 @@ import type { Move } from 'chess.js';
 
 export interface LogEntry { k: number; inputs: [number, number] }
 
+/** What the board and HUD need from any match: the local bot game and a relayed two-player (wagered) game both fit it. */
+export interface Match {
+  readonly rules: ChessRules;
+  readonly state: ChessState;
+  readonly log: LogEntry[];
+  readonly seed: string;
+  readonly you: Side;
+  readonly participants: [string, string];
+  readonly yourTurn: boolean;
+  legalMoves(): Move[];
+  /** Your action; false when it is not your turn or not legal. */
+  act(action: number): boolean;
+  concede(): void;
+  /** Ask the opponent (bot or relay) to act when it is their turn. */
+  poke(): void;
+  close(): void;
+}
+
 export interface MatchEvents {
   /** A log entry was accepted: the move it made (null for a concession / no-op) and the state after it. */
   onStep(entry: LogEntry, move: Move | null, state: ChessState): void;
   onStatus(text: string): void;
 }
 
-export class LocalMatch {
+export class LocalMatch implements Match {
   public readonly rules: ChessRules = createChessRules();
   public state: ChessState;
   public readonly log: LogEntry[] = [];

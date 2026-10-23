@@ -9,9 +9,14 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4174",
     "pieces": "node scripts/build-pieces.mjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "relay": "tsx relay/server.mts",
+    "test:contracts": "hardhat test",
+    "test:relay": "node --test test/relay.test.mjs",
+    "test": "pnpm test:contracts && pnpm test:relay"
   },
   "dependencies": {
+    "@noble/hashes": "1.8.0",
     "chess.js": "1.4.0",
     "deckwright": "github:strodanodev/deckwright",
     "n8ao": "2.0.1",
@@ -20,8 +25,15 @@
     "three.quarks": "0.17.1"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "3.1.3",
+    "@openzeppelin/contracts": "5.0.2",
     "@types/three": "0.186.0",
+    "@types/ws": "8.18.1",
+    "ethers": "6.17.0",
+    "hardhat": "2.29.1",
+    "tsx": "4.23.7",
     "typescript": "5.9.3",
-    "vite": "8.3.5"
+    "vite": "8.3.5",
+    "ws": "8.18.3"
   }
 }

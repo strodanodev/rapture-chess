@@ -1,0 +1,19 @@
+/* Wager panel: same tokens as the HUD (src/style.css), scoped under .wager */
+.wager { background: var(--panel, rgba(10, 10, 16, 0.72)); border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); border-radius: 10px; padding: 12px 14px; color: var(--text, #ece6da); font-size: 12px; backdrop-filter: blur(10px); display: grid; gap: 8px; width: 264px; }
+.wager[hidden] { display: none; }
+.wager h3 { margin: 0; font-family: var(--font-display, Georgia, serif); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold, #ffc455); }
+.wager .row { display: flex; gap: 6px; align-items: center; }
+.wager label { color: var(--muted, #9a9384); letter-spacing: 0.08em; text-transform: uppercase; font-size: 10px; }
+.wager input { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); color: inherit; border-radius: 5px; padding: 7px 9px; font: inherit; }
+.wager input:focus { outline: none; border-color: var(--gold, #ffc455); }
+.wager button { background: rgba(255, 255, 255, 0.04); color: inherit; border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); border-radius: 6px; padding: 8px 12px; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; cursor: pointer; }
+.wager button:hover { border-color: var(--gold, #ffc455); background: rgba(255, 196, 85, 0.12); }
+.wager button.primary { background: linear-gradient(180deg, #ffd27a, #c9932f); color: #1a1206; border-color: #ffe2a0; font-weight: 600; }
+.wager button:disabled { opacity: 0.5; cursor: default; }
+.wager .note { color: var(--muted, #9a9384); line-height: 1.45; margin: 0; }
+.wager .note.err { color: #ff8a6a; }
+.wager .link { word-break: break-all; font-family: ui-monospace, Consolas, monospace; font-size: 10px; background: rgba(0, 0, 0, 0.35); padding: 6px 8px; border-radius: 5px; user-select: all; }
+.wager .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+.wager .pill.win { border-color: var(--gold, #ffc455); color: var(--gold, #ffc455); }
+.wager .clock { font-variant-numeric: tabular-nums; font-size: 18px; font-family: var(--font-display, Georgia, serif); letter-spacing: 0.1em; }
+.wager .clock.low { color: #ff8a6a; }
