@@ -4,3 +4,4 @@ dist/
 renders/avatars.log
 
 .vercel
+DEPLOY.local.md
