@@ -5,13 +5,13 @@
  *
  * Wiring (main.ts):
  *   const wager = mountWager({ root, web3, playerKey: () => shell?.init.player.id ?? null, nodeUrl: () => shell?.init.node.url ?? null });
- *   // when an arcade match ends: wager.showMatch(matchId)
+ *   // when an arcade match ends: wager.showMatch(matchId, settled.signatures)
  */
 import './wager.css';
 import { createChain, type ChainClient } from 'deckwright/web/lib/chain.js';
 import type { Web3Link } from '../web3/wallet';
 import {
-  claimProblem, deltaClaimBytes, deltaWinner, encodeClaim, encodeRequestUnstake, encodeStake, encodeUnstake, encodeWithdraw, formatZkLtc,
+  claimProblem, deltaClaimBytes, deltaWinner, encodeClaim, encodeClaimWithWinner, encodeRequestUnstake, winnerSignature, encodeStake, encodeUnstake, encodeWithdraw, formatZkLtc,
   isLitId, parseZkLtc, readClaimed, readPending, readStake, readUnstakeDelay, readWalletOf, type LitNodeDelta,
 } from '../web3/wager';
 
@@ -28,8 +28,11 @@ export interface WagerMountOptions {
 }
 export interface WagerPanel {
   readonly element: HTMLElement;
-  /** A match just ended on `nodeUrl()`: offer to claim it once the node has settled it. */
-  showMatch(matchId: string): void;
+  /**
+   * A match just ended on `nodeUrl()`: offer to claim it once the node has settled it. `signatures` are the ledger
+   * signatures the relay reported (RelaySettled.signatures): kept so a match the loser never signed can still pay.
+   */
+  showMatch(matchId: string, signatures?: Record<string, string>): void;
   /** Hide or show the whole panel (the title screen vs the game). */
   setVisible(on: boolean): void;
   /** Re-read the escrow (after a wallet or key change). */
@@ -37,6 +40,7 @@ export interface WagerPanel {
 }
 
 const STORE = 'rapture-chess.wager.v2';
+const STORE_SIGS = 'rapture-chess.wager.sigs';
 const env = import.meta.env as Record<string, string | undefined>;
 const ZERO = '0x0000000000000000000000000000000000000000';
 const el = (tag: string, cls = '', text = ''): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
@@ -64,6 +68,7 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
   let pending = 0n;
   let delay = 0;
   let matchId: string | null = recallMatch();
+  let signatures: Record<string, string> = recallSigs(matchId);
   let delta: LitNodeDelta | null = null;
   let claimedAlready = false;
   let tick: ReturnType<typeof setInterval> | null = null;
@@ -176,7 +181,7 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
 
     const describe = (): void => {
       if (!delta) { info.textContent = 'Ask the host node whether it has settled this match.'; return; }
-      const problem = claimProblem(delta, id);
+      const problem = claimProblem(delta, id, signatures);
       const who = deltaWinner(delta);
       const outcome = who === 2 ? 'a draw' : `${who === 0 ? 'Alliance' : 'Horde'} won`;
       const label = delta.official ? 'official' : (delta.verification ?? delta.attestation);
@@ -208,14 +213,14 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
       claimBtn.disabled = true;
       try {
         const { json, hostSig } = deltaClaimBytes(delta);
-        await send(encodeClaim(id, json, hostSig));
+        await send(delta.attestation === 'players' ? encodeClaim(id, json, hostSig) : encodeClaimWithWinner(id, json, hostSig, winnerSignature(delta, signatures)));
         claimedAlready = true;
         say('Claimed: the stakes are paid out.');
         await refresh();
         describe();
       } catch (e) { say((e as Error).message, true); claimBtn.disabled = false; }
     };
-    forget.onclick = () => { matchId = null; delta = null; claimedAlready = false; rememberMatch(null); render(); };
+    forget.onclick = () => { matchId = null; delta = null; claimedAlready = false; signatures = {}; rememberMatch(null); render(); };
   }
 
   // ------------------------------------------------------------------ state
@@ -232,7 +237,16 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
     try { const v = localStorage.getItem(STORE); return v && isLitId(v) ? v : null; } catch { return null; }
   }
   function rememberMatch(id: string | null): void {
-    try { if (id) localStorage.setItem(STORE, id); else localStorage.removeItem(STORE); } catch { /* private mode */ }
+    try {
+      if (id) localStorage.setItem(STORE, id); else localStorage.removeItem(STORE);
+      if (id) localStorage.setItem(STORE_SIGS, JSON.stringify({ id, signatures })); else localStorage.removeItem(STORE_SIGS);
+    } catch { /* private mode */ }
+  }
+  function recallSigs(id: string | null): Record<string, string> {
+    try {
+      const v = JSON.parse(localStorage.getItem(STORE_SIGS) ?? 'null') as { id?: string; signatures?: Record<string, string> } | null;
+      return v && v.id === id && v.signatures ? v.signatures : {};
+    } catch { return {}; }
   }
 
   wallet.subscribe(() => { void refresh(); });
@@ -241,9 +255,10 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
 
   return {
     element: box,
-    showMatch(id) {
+    showMatch(id, sigs) {
       if (!isLitId(id)) return;
-      if (matchId !== id) { delta = null; claimedAlready = false; }
+      if (matchId !== id) { delta = null; claimedAlready = false; signatures = {}; }
+      signatures = { ...signatures, ...(sigs ?? {}) };
       matchId = id;
       rememberMatch(id);
       render();

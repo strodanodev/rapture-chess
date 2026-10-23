@@ -112,6 +112,70 @@ Remove-Item Env:PRIVATE_KEY, Env:NEW_OWNER
 Then sweep what remains in the old wallet and confirm with `npm run publish:title -- status …` and the node's `/titles`
 (`publisherHosts: 1, published: true` under the new owner). The escrow address and the site do not change.
 
+## Rules v2 and escrow v2: rollout (prepared, not live)
+
+Built and tested, nothing deployed or registered. Live today is still `rapture-chess.v1` with the v1 escrow; the relay
+already serves both (it reads `GAUNTLET_RULESET` from the node), so v1 matches keep working through the rollout.
+
+What v2 changes:
+
+| | v1 (live) | v2 (`rulesets/rapture-chess.v2.js`, build `ddff55de…`) |
+|---|---|---|
+| Clock | 60 s per move, enforced by the relay, logged as a concession | 5+3 by default (`CHESS_TC`), Fischer increment, in the log: entry 0 sets the control, every entry carries the mover's time; each side's first move is off the clock (30 s to make it) |
+| Timeout | always a loss | a loss, or a draw when the opponent cannot mate (FIDE 6.9) |
+| Draws | none by agreement | offer / accept / decline from either side, an offer against a standing offer agrees, moving declines, one offer per two plies |
+| Long games | `maxTicks` 1200, unfinished = 0-0 | drawn at 2000 entries |
+| Loser never signs | settlement fails outright (partial signatures are refused) | the relay settles under its own key (`relay`, needs `RELAY_KEYS`), casual falls back to `host`; the winner's signature reaches the escrow |
+| Escrow | `claim`: both signatures, host bonded at claim time | `claim` as before, but a pot MatchBook holds Final survives the host unbonding; `claimWithWinner`: a placed match the publisher's own bonded host settled, paid on the winner's ledger signature (draws need none) |
+
+Trust that remains in v2: the publisher's host keeps the clock and vouches that the moves in a winner-signed log were
+the loser's. It cannot invent a winner (the winner must sign the exact log it replayed) or a match (it must be placed:
+both players queued for it). Gas: `claim` about 3.39M, `claimWithWinner` about 3.63M.
+
+Order matters: the escrow's `claimWithWinner` pays only when the host's NodeStake operator owns the title, so do the
+key rotation above first and register v2 from the new wallet, which also holds the chess node's bond.
+
+```powershell
+cd "C:\Users\strodano\Documents\LitVM Games\CHESS"
+# 1. the relay key (private, gitignored); prints RELAY_KEYS=<pubkey>
+node scripts/relay-key.mjs
+# 2. register the v2 title from the publisher wallet (the rotated one)
+cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
+$env:PUBLISHER_KEY = "0x<publisher key>"
+npm run publish:title -- register "C:\Users\strodano\Documents\LitVM Games\CHESS\rulesets\rapture-chess.v2.js"
+npm run publish:title -- status   "C:\Users\strodano\Documents\LitVM Games\CHESS\rulesets\rapture-chess.v2.js"
+Remove-Item Env:PUBLISHER_KEY
+# 3. deploy escrow v2 (OWNER = the rotated wallet); prints the address and writes deployments/liteforge.json litNodeWagerV2
+cd "C:\Users\strodano\Documents\LitVM Games\CHESS"
+$env:PRIVATE_KEY = "0x<deployer key>"; $env:OWNER = "0x<publisher wallet>"
+npx hardhat run scripts/deploy-wager.cjs --network liteforge
+Remove-Item Env:PRIVATE_KEY, Env:OWNER
+```
+
+4. Chess node (`C:\litvm\rapture-chess\node.env`), then restart it with the launcher (`-Stop`, then start):
+
+```
+RULESETS=C:/Users/strodano/Documents/LitVM Games/CHESS/rulesets/rapture-chess.v1.js,C:/Users/strodano/Documents/LitVM Games/CHESS/rulesets/rapture-chess.v2.js
+GAUNTLETS=rapture-chess.v1=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json,rapture-chess.v2=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json
+RELAY_KEYS=<from step 1>
+```
+
+5. Check: `/titles` lists `rapture-chess.v2` with `published: true`; `/health` advertises the relay key; the escrow's
+   `rulesetId()` is `rapture-chess.v2` and `titleRegistry.ownerOf(titleId())` is the bond operator.
+6. Site: `.env` `VITE_WAGER_ADDRESS=<escrow v2>` and `VITE_CHESS_RULESET=rapture-chess.v2`, then build and deploy.
+   The match screen needs the draw buttons and both clocks first (`Match.offerDraw/acceptDraw/declineDraw`,
+   `state.offer`, `RelayClock.left`), and `wager.showMatch(matchId, settled.signatures)` so the winner keeps their
+   signature for a claim.
+7. Testnet run before announcing: two browsers, a timed match with a draw offer declined then accepted; a flag; a
+   checkmate where the loser closes the tab before signing, settled as `relay`, claimed with `claimWithWinner`.
+8. Retire v1 once its stakes are out: players `requestUnstake` then `unstake` on the v1 escrow (stakes do not move
+   between escrows), then drop the v1 entries from `RULESETS` and `GAUNTLETS`.
+
+Still open after v2: stakes are a standing balance, not money locked into one match. A player can request an unstake
+before a match and withdraw after `unstakeDelay` if nobody claims in time, and any two staked players are wagering
+whenever they meet. Escrow v3 should take a deposit per match (both players fund the match id; refund if it never
+settles). Separate rating pools per time control would need one ruleset id per control.
+
 ## Not yet exercised
 
 - A match through the live arcade end to end (two browsers, two player keys): seat ticket, gauntlet, ledger

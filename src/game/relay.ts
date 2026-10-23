@@ -10,12 +10,20 @@
  */
 import type { Move } from 'chess.js';
 import { connectShell, parseLaunch, type CabinetShell } from 'deckwright/src/client/shell.ts';
-import { createChessRules, type ChessRules, type ChessState, concede, Op, type Side } from '../rules/chessRules';
+import { acceptDraw, createChessRules, declineDraw, entryAction, offerDraw, type ChessRules, type ChessState, concede, Op, type Side } from '../rules/chessRules';
+import { CHESS_RULESET_V1 } from '../litnode/chessTitle';
 import type { LogEntry, Match, MatchEvents } from './session';
 
-export interface RelayClock { side: Side; deadline: number; turnMs: number }
-/** What the relay reports once the node settled (placed matches) or the game ended (dev). */
-export interface RelaySettled { matchId: string; delta: Record<string, unknown> | null; seed: string; entries: LogEntry[]; dev: boolean }
+/**
+ * The clock as this client shows it. `deadline` is local time when the side to move runs out (or, before each side's
+ * first move and in v1, when its move window closes); `left` is both sides' time in ms as of now, for a timed game.
+ */
+export interface RelayClock { side: Side; deadline: number; turnMs: number; left: [number, number]; timed: boolean; firstMove: boolean }
+/**
+ * What the relay reports once the node settled (placed matches) or the game ended (dev). `signatures` are the ledger
+ * signatures that arrived: when the loser never signed, the winner's own is what escrow v2 pays on.
+ */
+export interface RelaySettled { matchId: string; delta: Record<string, unknown> | null; seed: string; entries: LogEntry[]; dev: boolean; signatures: Record<string, string> }
 
 export class RelayMatch implements Match {
   public readonly rules: ChessRules = createChessRules();
@@ -28,6 +36,9 @@ export class RelayMatch implements Match {
   public buildHash: string | null = null;
   public settled: RelaySettled | null = null;
   public clock: RelayClock | null = null;
+  public rulesetId = '';
+  /** This player's own ledger signature, once made. */
+  public ledgerSig: string | null = null;
   private ws: WebSocket | null = null;
   private started = false;
   private closed = false;
@@ -82,6 +93,15 @@ export class RelayMatch implements Match {
     return true;
   }
   concede(): void { this.act(concede()); }
+  get drawOffers(): boolean { return this.started && this.rulesetId !== CHESS_RULESET_V1; }
+  offerDraw(): boolean { return this.draw(offerDraw()); }
+  acceptDraw(): boolean { return this.draw(acceptDraw()); }
+  declineDraw(): boolean { return this.draw(declineDraw()); }
+  private draw(x: number): boolean {
+    if (!this.drawOffers || this.closed || !this.rules.canDraw(this.state, this.you, x)) return false;
+    this.ws?.send(JSON.stringify({ t: 'act', x }));
+    return true;
+  }
   poke(): void { /* the relay pushes the opponent's entries */ }
   close(): void { this.closed = true; this.ws?.close(); this.ws = null; this.shell?.close(); }
   /** Tell the arcade the match was played (it closes the title). */
@@ -111,19 +131,20 @@ export class RelayMatch implements Match {
         if (this.started) break;
         this.seed = String(m.seed);
         this.matchId = String(m.matchId);
+        this.rulesetId = String(m.rulesetId ?? CHESS_RULESET_V1);
         this.buildHash = (m.buildHash as string | null) ?? this.buildHash;
         this.participants = m.participants as [string, string];
         this.you = this.participants[1] === this.playerId ? 1 : 0;
         this.state = this.rules.init(this.seed, this.participants);
         this.started = true;
         for (const e of (m.entries as LogEntry[]) ?? []) this.apply(e, false);
-        this.setClock(Number(m.deadline), Number(m.turnMs));
+        this.setClock(m);
         this.events.onStatus(this.yourTurn ? 'your move' : 'live: opponent to move');
         break;
       }
       case 'entry':
         this.apply(m.entry as LogEntry, true);
-        this.setClock(Number(m.deadline), this.clock?.turnMs ?? 60_000);
+        this.setClock(m);
         break;
       case 'reject':
         this.events.onStatus(`move rejected: ${String(m.reason)}`);
@@ -137,13 +158,15 @@ export class RelayMatch implements Match {
         this.events.onStatus('signing the match ledger…');
         try {
           const sig = await this.shell.signLedger(String(m.matchId), (m.buildHash as string | null) ?? null, this.log);
+          this.ledgerSig = sig;
           this.ws?.send(JSON.stringify({ t: 'sig', sig }));
           this.events.onStatus('settling on LitNode…');
         } catch (e) { this.events.onStatus(`not signed: ${(e as Error).message}`); }
         break;
       }
       case 'settled': {
-        const s: RelaySettled = { matchId: this.matchId, delta: (m.delta as Record<string, unknown> | null) ?? null, seed: String(m.seed ?? this.seed), entries: (m.entries as LogEntry[]) ?? this.log, dev: !!m.dev };
+        const signatures = { ...((m.signatures as Record<string, string> | undefined) ?? {}), ...(this.ledgerSig ? { [this.playerId]: this.ledgerSig } : {}) };
+        const s: RelaySettled = { matchId: this.matchId, delta: (m.delta as Record<string, unknown> | null) ?? null, seed: String(m.seed ?? this.seed), entries: (m.entries as LogEntry[]) ?? this.log, dev: !!m.dev, signatures };
         this.settled = s;
         const d = s.delta as { attestation?: string; proof?: string; placed?: boolean } | null;
         this.events.onStatus(d ? `settled on LitNode: ${d.proof ?? d.attestation ?? 'recorded'}${d.placed === false ? ' (unplaced, casual)' : ''}` : 'match over');
@@ -158,16 +181,24 @@ export class RelayMatch implements Match {
 
   private apply(entry: LogEntry, notify: boolean): void {
     if (entry.k !== this.log.length) return;   // out of order: the start replay covers it
-    const x = entry.inputs[0] || entry.inputs[1];
-    const move = this.rules.resolve(this.state, x);
+    const resolved = this.rules.resolve(this.state, entryAction(entry.inputs));
+    const plies = this.state.sans.length;
     this.state = this.rules.step(this.state, { [this.participants[0]]: entry.inputs[0], [this.participants[1]]: entry.inputs[1] });
     this.log.push(entry);
+    // a move stamped after its flag fell is in the log but not on the board
+    const move = this.state.sans.length > plies ? resolved : null;
     if (notify) this.events.onStep(entry, move, this.state);
   }
 
-  private setClock(deadline: number, turnMs: number): void {
-    if (!Number.isFinite(deadline) || this.state.over) return;
-    this.clock = { side: this.state.turn, deadline, turnMs };
+  /** The relay's clock report: `remaining` is what the side to move has, as of the message. */
+  private setClock(m: { [k: string]: unknown }): void {
+    if (this.state.over) return;
+    const remaining = Number(m.remaining), turnMs = Number(m.turnMs) || 60_000;
+    if (!Number.isFinite(remaining)) return;
+    const side = this.state.turn, timed = !!this.state.tc;
+    const left: [number, number] = [this.state.left[0], this.state.left[1]];
+    if (timed && !m.firstMove) left[side] = remaining;
+    this.clock = { side, deadline: Date.now() + remaining, turnMs, left, timed, firstMove: !!m.firstMove };
     for (const cb of this.clockListeners) cb(this.clock);
   }
 }

@@ -13,10 +13,10 @@ Verified against the public LitNode checkout at `../LITNODE/litnode` (v0.12.0, p
 | Title | `defineTitle` shape, conformance suite, `buildHash = H('ruleset', bytes)` | `src/litnode/chessTitle.ts` → `pnpm title` → `rulesets/rapture-chess.v1.js` + `.json` (conformant) |
 | Queue and placement | the cabinet signs `queue`; nodes pair players and place the match with a beacon seed | nothing: standard |
 | Gauntlet | the host node spawns the title's match server per match, mints HMAC seat tickets, proxies `wss://<wsAddr>/<room>` | `relay/server.mts` + `gauntlets/rapture-chess.json` |
-| Play | the client seats through the arcade shell (`cabinet:sign-seat`) and records the log | `src/game/relay.ts` `RelayMatch.placed()`; the page reads `?match&ws&room&player&build` |
-| Ledger | both players sign `{ matchId, ticks, head, buildHash }` (`cabinet:sign`); the gauntlet POSTs `/ledger` | the relay asks for both signatures and posts `{ matchId, rulesetId, buildHash, mode, participants, entries, signatures }` |
+| Play | the client seats through the arcade shell (`cabinet:sign-seat`) and records the log | `src/game/relay.ts` `RelayMatch.placed()`; the page reads `?match&ws&room&player&build`; v2 logs carry the time control and clock stamps |
+| Ledger | both players sign `{ matchId, ticks, head, buildHash }` (`cabinet:sign`); the gauntlet POSTs `/ledger` | the relay asks for both signatures and posts them (`players`); if a player left or will not sign, it posts under its own key (`relay`, `RELAY_KEYS`), then, casual only, unsigned (`host`) |
 | Settlement | the node replays the log in its sandbox, signs the delta (`hostSig`), witnesses co-sign; ranked placed matches go to MatchBook | nothing: standard |
-| Wager | nothing (LitNode has no stakes or payouts) | `contracts/LitNodeWager.sol`: stakes bound to player keys, paid out on the node's signed delta (ed25519 verified on chain), with MatchBook finality when the match is on chain |
+| Wager | nothing (LitNode has no stakes or payouts) | `contracts/LitNodeWager.sol` (v2): stakes bound to player keys, paid out on the node's signed delta (ed25519 verified on chain): both players' signatures, or the winner's alone on a placed match the publisher's own host settled; MatchBook finality when the match is on chain |
 
 ## Build and check the title
 
@@ -24,7 +24,8 @@ Verified against the public LitNode checkout at `../LITNODE/litnode` (v0.12.0, p
 pnpm title       # esbuild → titles/rapture-chess.v1.mjs, then LitNode's tools/bundle-title.mjs → rulesets/ (runs the conformance suite)
 ```
 
-`rulesets/rapture-chess.v1.json` carries the `buildHash`. Register the exact `rulesets/rapture-chess.v1.js` the node loads
+The title is `rapture-chess.v2` (draw offers, the clock in the log, FIDE 6.9 timeouts); the v1 artifact stays pinned in
+`rulesets/` for the matches still served under it. `rulesets/rapture-chess.v2.json` carries the `buildHash`. Register the exact `rulesets/rapture-chess.v1.js` the node loads
 (CRLF would change the hash; the file is written with LF).
 
 ## Claim the title (publisher wallet)

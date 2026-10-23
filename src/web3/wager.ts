@@ -5,6 +5,12 @@
  *
  *   claim(matchId, deltaJson, hostSig)   deltaJson = canonical(delta without hostSig/cosigners/cosigs/disputes)
  *                                        hostSig   = the delta's hostSig (64 bytes, ed25519 by the host node)
+ *   claimWithWinner(..., winnerSig)      escrow v2: a placed match the loser never signed (relay- or host-attested by the
+ *                                        title publisher's own bonded host), paid on the winner's ledger signature
+ *                                        (empty for a draw)
+ *
+ * VITE_CHESS_RULESET picks the ruleset the escrow at VITE_WAGER_ADDRESS pays on: rapture-chess.v1 (escrow v1) until
+ * v2 goes live, then rapture-chess.v2 with the v2 escrow address.
  */
 import { keccak_256 } from '@noble/hashes/sha3';
 import { bytesToHex, encodeCall, utf8ToHex, words, uintAt, addressAt, boolAt } from 'deckwright/web/lib/abi.js';
@@ -14,7 +20,9 @@ import { canonical } from './canonical';
 export { canonical };
 
 export const LITEFORGE_CHAIN_ID = 4441;
-export const CHESS_RULESET_ID = 'rapture-chess.v1';
+export const CHESS_RULESET_ID = ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_CHESS_RULESET) ?? 'rapture-chess.v1';
+/** Escrow v2 (the v2 ruleset) also pays matches the loser never signed. */
+export const ESCROW_V2 = CHESS_RULESET_ID !== 'rapture-chess.v1';
 
 /** Human-readable ABI of what the client calls or reads. */
 export const WAGER_ABI = [
@@ -22,6 +30,7 @@ export const WAGER_ABI = [
   'function requestUnstake()',
   'function unstake()',
   'function claim(bytes32 matchId, bytes deltaJson, bytes hostSig)',
+  'function claimWithWinner(bytes32 matchId, bytes deltaJson, bytes hostSig, bytes winnerSig)',
   'function withdraw()',
   'function stakeOf(address wallet) view returns (uint256 amount, uint64 unstakeAt)',
   'function keyOf(address wallet) view returns (bytes32)',
@@ -79,15 +88,29 @@ export function deltaClaimBytes(delta: LitNodeDelta): { json: string; hostSig: s
   return { json: canonical(body), hostSig: `0x${hostSig}` };
 }
 
-/** Why a delta could not pay out, before spending gas; null when it looks claimable. */
-export function claimProblem(delta: LitNodeDelta, matchId: string): string | null {
+/**
+ * Why a delta could not pay out, before spending gas; null when it looks claimable. `signatures` are the ledger
+ * signatures the relay passed on (escrow v2 pays an unsigned-by-the-loser match on the winner's).
+ */
+export function claimProblem(delta: LitNodeDelta, matchId: string, signatures: Record<string, string> = {}): string | null {
   if (delta.matchId !== matchId) return 'the delta is for another match';
   if (delta.rulesetId !== CHESS_RULESET_ID) return `the delta is for ${delta.rulesetId}, not ${CHESS_RULESET_ID}`;
-  if (delta.attestation !== 'players') return `the result is ${delta.attestation}-attested: both players must have signed the ledger`;
   if (delta.complete === false) return 'the match did not finish';
   if (!Array.isArray(delta.participants) || delta.participants.length !== 2 || !delta.participants.every(isLitId)) return 'the delta names no two player keys';
   if (!delta.scores || delta.participants.some((p) => typeof delta.scores[p] !== 'number')) return 'the delta carries no scores';
+  if (delta.attestation === 'players') return null;
+  if (!ESCROW_V2 || (delta.attestation !== 'relay' && delta.attestation !== 'host')) return `the result is ${delta.attestation}-attested: both players must have signed the ledger`;
+  if (delta.placed !== true) return 'only a match the mesh placed pays out without both signatures';
+  if (deltaWinner(delta) !== 2 && !winnerSignature(delta, signatures)) return "the loser did not sign, and the winner's ledger signature is not on this device";
   return null;
+}
+
+/** The winner's ledger signature (hex, 64 bytes) among `signatures`, or null (also for a draw). */
+export function winnerSignature(delta: LitNodeDelta, signatures: Record<string, string>): string | null {
+  const who = deltaWinner(delta);
+  if (who === 2) return null;
+  const sig = signatures[delta.participants[who]];
+  return sig && /^[0-9a-f]{128}$/.test(sig) ? sig : null;
 }
 
 /** 0 side 0 wins, 1 side 1 wins, 2 draw, as the board numbers it. */
@@ -106,6 +129,7 @@ export const SELECTORS = {
   requestUnstake: selector('requestUnstake()'),
   unstake: selector('unstake()'),
   claim: selector('claim(bytes32,bytes,bytes)'),
+  claimWithWinner: selector('claimWithWinner(bytes32,bytes,bytes,bytes)'),
   withdraw: selector('withdraw()'),
   stakeOf: selector('stakeOf(address)'),
   keyOf: selector('keyOf(address)'),
@@ -125,6 +149,9 @@ export const encodeUnstake = (): string => SELECTORS.unstake;
 export const encodeWithdraw = (): string => SELECTORS.withdraw;
 export const encodeClaim = (matchId: string, json: string, hostSig: string): string =>
   encodeCall(SELECTORS.claim, ['uint256', 'bytes', 'bytes'], [b32(litIdToBytes32(matchId)), utf8ToHex(json), hostSig]);
+/** Escrow v2: `winnerSig` is the winner's 64-byte ledger signature as hex (no 0x), or null for a draw. */
+export const encodeClaimWithWinner = (matchId: string, json: string, hostSig: string, winnerSig: string | null): string =>
+  encodeCall(SELECTORS.claimWithWinner, ['uint256', 'bytes', 'bytes', 'bytes'], [b32(litIdToBytes32(matchId)), utf8ToHex(json), hostSig, winnerSig ? `0x${winnerSig}` : '0x']);
 
 // ------------------------------------------------------------------ reads
 export interface StakeRecord { amount: bigint; unstakeAt: number; key: string | null }

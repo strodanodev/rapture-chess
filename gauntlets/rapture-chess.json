@@ -1,5 +1,5 @@
 {
-  "$comment": "LitNode gauntlet config for Rapture Chess (node/gauntlet.js). For every rapture-chess.v1 match this node hosts, it spawns relay/server.mts for that match alone: the node mints the seat tickets, proxies wss://<wsAddr>/<room> to the process, and the process posts the signed ledger to the node's /ledger and exits. Copy this file, set cwd to your Rapture Chess checkout (pnpm install at its root), then in the node's environment: GAUNTLETS=rapture-chess.v1=<absolute path to your copy>, GAUNTLET_GATEWAY_PORT=8478 (or RELAY_PORT=8478 when no other title fronts a relay), RULESETS=<checkout>/rulesets/rapture-chess.v1.js. The GAUNTLET_* variables (match id, seed, seats, secret, port, node url, build, placed mode) are set by the node per match.",
+  "$comment": "LitNode gauntlet config for Rapture Chess (node/gauntlet.js). For every match of a title this node hosts with this file, it spawns relay/server.mts for that match alone: the node mints the seat tickets, proxies wss://<wsAddr>/<room> to the process, and the process posts the ledger to the node's /ledger and exits. The node passes GAUNTLET_RULESET, so one file serves both rapture-chess.v1 (no clock in the log, CHESS_TURN_MS per move) and rapture-chess.v2 (CHESS_TC base minutes + increment seconds, CHESS_FIRST_MOVE_MS for each side's first move). Copy this file, set cwd to your Rapture Chess checkout (pnpm install at its root), then in the node's environment: GAUNTLETS=rapture-chess.v2=<absolute path to your copy> (comma-separate a v1 entry while v1 is still served), RULESETS=<checkout>/rulesets/rapture-chess.v2.js, and RELAY_KEYS=<the public key scripts/relay-key.mjs prints> so a match the loser never signs still settles. The GAUNTLET_* variables are set by the node per match.",
   "command": "${node}",
   "args": [
     "node_modules/tsx/dist/cli.mjs",
@@ -7,9 +7,11 @@
   ],
   "cwd": "C:/Users/strodano/Documents/LitVM Games/CHESS",
   "env": {
+    "CHESS_TC": "5+3",
+    "CHESS_FIRST_MOVE_MS": "30000",
     "CHESS_TURN_MS": "60000",
     "CHESS_DISCONNECT_MS": "60000",
-    "CHESS_SIGN_MS": "60000"
+    "CHESS_SIGN_MS": "20000"
   },
   "portRange": [
     7860,

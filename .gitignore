@@ -8,3 +8,6 @@ DEPLOY.local.md
 contracts/artifacts/
 contracts/cache/
 .env
+
+# the relay key (scripts/relay-key.mjs): private
+.relay-key.json

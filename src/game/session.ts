@@ -20,6 +20,12 @@ export interface Match {
   /** Your action; false when it is not your turn or not legal. */
   act(action: number): boolean;
   concede(): void;
+  /** Whether this match takes draw offers (a relayed rapture-chess.v2 match; the bot does not). */
+  readonly drawOffers: boolean;
+  /** Offer a draw, or agree to the opponent's standing offer; false when the rules would ignore it now. */
+  offerDraw(): boolean;
+  acceptDraw(): boolean;
+  declineDraw(): boolean;
   /** Ask the opponent (bot or relay) to act when it is their turn. */
   poke(): void;
   close(): void;
@@ -61,6 +67,10 @@ export class LocalMatch implements Match {
   }
 
   concede(): void { this.act(concede()); }
+  readonly drawOffers = false;
+  offerDraw(): boolean { return false; }
+  acceptDraw(): boolean { return false; }
+  declineDraw(): boolean { return false; }
 
   /** Ask the bot for the opponent's move when it is to act. */
   poke(): void {

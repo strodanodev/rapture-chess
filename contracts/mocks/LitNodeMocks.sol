@@ -1,12 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.24;
 
-/// Test doubles for the three LitNode contracts LitNodeWager reads.
+/// Test doubles for the four LitNode contracts LitNodeWager reads.
 contract MockNodeStake {
     mapping(bytes32 => bool) public active;
+    mapping(bytes32 => address) public operators;
     function set(bytes32 nodeKey, bool on) external { active[nodeKey] = on; }
+    function setOperator(bytes32 nodeKey, address operator) external { operators[nodeKey] = operator; }
     function standingOf(bytes32 nodeKey) external view returns (address operator, uint256 amount, bool isActive) {
-        return (address(0xBEEF), active[nodeKey] ? 1e18 : 0, active[nodeKey]);
+        address op = operators[nodeKey];
+        return (op == address(0) ? address(0xBEEF) : op, active[nodeKey] ? 1e18 : 0, active[nodeKey]);
+    }
+}
+
+contract MockTitleRegistry {
+    mapping(uint256 => address) public owners;
+    function set(string calldata rulesetId, address owner) external { owners[uint256(keccak256(bytes(rulesetId)))] = owner; }
+    function ownerOf(uint256 titleId) external view returns (address) {
+        address o = owners[titleId];
+        require(o != address(0), "no title");
+        return o;
     }
 }
 

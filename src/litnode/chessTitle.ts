@@ -5,23 +5,26 @@
  * `{ seed, entries }` to the same `serialize()` root and the same scores, and that replayed result is what the
  * wager escrow pays on.
  */
-import { createChessRules, type ChessState } from '../rules/chessRules';
+import { createChessRules, MAX_BEATS, type ChessState } from '../rules/chessRules';
 
-export const CHESS_RULESET_ID = 'rapture-chess.v1';
+/** v2: draw offers, the clock in the log (timeouts, FIDE 6.9), the move limit. */
+export const CHESS_RULESET_ID = 'rapture-chess.v2';
+/** The first build (moves and concessions only, no clock): still registered, its artifact pinned in rulesets/. */
+export const CHESS_RULESET_V1 = 'rapture-chess.v1';
 
 export function defineChessTitle() {
   const rules = createChessRules();
   // The balance version pins the move encoding and the result rules; a change to either is a new ruleset id.
-  const balance = { version: 'bal-chess-v1', apply: () => ({}) };
+  const balance = { version: 'bal-chess-v2', apply: () => ({}) };
   return {
     manifest: {
       kind: 'replayable',
       rulesetId: CHESS_RULESET_ID,
       tickRate: 1,
-      maxTicks: 1200,
+      maxTicks: MAX_BEATS,
       modes: ['ranked', 'casual'],
       participants: 2,
-      inputSchema: 'chess-move:op3,from6,to6,promo3',
+      inputSchema: 'chess-v2:op3,move(from6,to6,promo3)|control(base15,inc8)|clock(ms28)',
       hiddenInfo: false,
       replicas: 3,
       standingFloor: 0,
@@ -43,6 +46,6 @@ export function defineChessTitle() {
     /** What the root commits to: the whole state (there is no hidden information in chess). */
     serialize: (s: ChessState): ChessState => JSON.parse(JSON.stringify(s)) as ChessState,
     /** What a client may see: the position and the result, not the seed. */
-    view: (s: ChessState) => ({ fen: s.fen, turn: s.turn, turnNo: s.turnNo, over: s.over, winner: s.winner, reason: s.reason, sans: s.sans.slice(), last: s.last, p: s.p }),
+    view: (s: ChessState) => ({ fen: s.fen, turn: s.turn, turnNo: s.turnNo, over: s.over, winner: s.winner, reason: s.reason, sans: s.sans.slice(), last: s.last, p: s.p, tc: s.tc, left: s.left, offer: s.offer }),
   };
 }

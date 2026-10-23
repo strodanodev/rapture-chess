@@ -21,15 +21,31 @@ interface IPlayerProfile {
     function ownerOfKey(bytes32 key) external view returns (address owner, uint256 tokenId, bool active);
 }
 
-/// @title LitNodeWager: zkLTC stakes on Rapture Chess, paid out on LitNode's own match result.
+/// Reads LitNode's TitleRegistry (contracts/TitleRegistry.sol): the title is an ERC-721, id keccak256(rulesetId).
+interface ITitleRegistry {
+    function ownerOf(uint256 titleId) external view returns (address);
+}
+
+/// @title LitNodeWager (v2): zkLTC stakes on Rapture Chess, paid out on LitNode's own match result.
 ///
 /// No resolver key. A player binds a stake to their LitNode player key (the ed25519 key the arcade signs with).
 /// When the mesh settles a Rapture Chess match between two staked players, the host node signs the settled DELTA
 /// (`sign('delta', body)`, node/settle.js). Anyone submits that delta's canonical JSON and the host's signature:
-/// the contract verifies the ed25519 signature on chain (vendor/Ed25519.sol), requires the host to be a bonded
-/// LitNode (NodeStake.standingOf), requires both players to have signed the ledger (`attestation: "players"`),
-/// and, when MatchBook knows the match (a placed ranked match), requires it to be FINAL with the same resultHash.
-/// The pot is twice the smaller stake; the winner takes it, a draw returns it, the larger staker keeps the rest.
+/// the contract verifies the ed25519 signature on chain (vendor/Ed25519.sol) and pays on one of two proofs:
+///
+///   claim             both players signed the ledger (`attestation: "players"`), and the host is a bonded LitNode,
+///                     or MatchBook holds the match FINAL on the same resultHash (so a host that unbonds later
+///                     strands no ranked pot);
+///   claimWithWinner   the loser never signed (left, timed out, closed the tab): the delta is `relay`- or `host`-
+///                     attested by the title publisher's own bonded host (its NodeStake operator owns the title on
+///                     TitleRegistry), the match was placed by the mesh (both players queued for it), and the WINNER
+///                     signed the very ledger the host replayed (`ledger` ‖ 0 ‖ canonical {buildHash, head, matchId,
+///                     ticks}, protocol/log.js). The loser cannot block a payout; the host cannot invent a winner who
+///                     did not sign. What remains trusted is the publisher host's clock and its word that the moves in
+///                     the winner-signed log were the loser's.
+///
+/// When MatchBook knows the match, it must be FINAL with the same resultHash. The pot is twice the smaller stake; the
+/// winner takes it, a draw moves nothing, the larger staker keeps the rest. The ruleset id is fixed at deployment.
 ///
 /// A loser cannot run: an unstake takes `unstakeDelay` seconds, set longer than MatchBook.totalWindow() so a
 /// settled match can always be claimed before the stakes move.
@@ -43,6 +59,10 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
     INodeStake public immutable nodeStake;
     IMatchBook public immutable matchBook;
     IPlayerProfile public immutable profile;   // address(0): no profile check
+    ITitleRegistry public immutable titleRegistry;
+    /// keccak256(rulesetId): the TitleRegistry token id, and what a delta's rulesetId must hash to.
+    uint256 public immutable titleId;
+    string public rulesetId;
     uint64 public unstakeDelay;
     uint16 public feeBps;                      // of the pot, on a win only
     uint256 public fees;
@@ -52,7 +72,6 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
     mapping(bytes32 => bool) public claimed;       // matchId → paid
     mapping(address => uint256) public pending;    // payouts a recipient refused
 
-    bytes private constant RULESET = bytes("rapture-chess.v1");
     uint8 private constant STATUS_NONE = 0;
     uint8 private constant STATUS_FINAL = 3;
     uint256 private constant SCALE = 1000; // scores as integers: 1 → 1000, 0.5 → 500
@@ -81,6 +100,9 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
     error NotFinal(uint8 status);
     error ResultMismatch();
     error NotPlayers();
+    error NotPlaced();
+    error NotPublisherHost(address operator, address publisher);
+    error BadWinnerSignature();
     error NotReplayable();
     error NotComplete();
     error WrongRuleset();
@@ -88,11 +110,15 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
     error Malformed(uint256 at);
     error FeeTooHigh();
 
-    constructor(address owner_, INodeStake nodeStake_, IMatchBook matchBook_, IPlayerProfile profile_, uint64 unstakeDelay_) Ownable(owner_) {
-        require(address(nodeStake_) != address(0) && address(matchBook_) != address(0), "litnode");
+    constructor(address owner_, INodeStake nodeStake_, IMatchBook matchBook_, IPlayerProfile profile_, ITitleRegistry titleRegistry_, string memory rulesetId_, uint64 unstakeDelay_) Ownable(owner_) {
+        require(address(nodeStake_) != address(0) && address(matchBook_) != address(0) && address(titleRegistry_) != address(0), "litnode");
+        require(bytes(rulesetId_).length > 0, "ruleset");
         nodeStake = nodeStake_;
         matchBook = matchBook_;
         profile = profile_;
+        titleRegistry = titleRegistry_;
+        rulesetId = rulesetId_;
+        titleId = uint256(keccak256(bytes(rulesetId_)));
         unstakeDelay = unstakeDelay_;
     }
 
@@ -148,31 +174,71 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
 
     // ------------------------------------------------------------------ claims
 
-    /// Pay out a settled LitNode match. `deltaJson` is the host node's delta body as canonical JSON (sorted keys,
-    /// no whitespace, without hostSig/cosigners/cosigs/disputes); `hostSig` the 64-byte ed25519 signature the host
-    /// made over `"delta" ‖ 0x00 ‖ deltaJson`.
+    /// Pay out a settled LitNode match both players signed. `deltaJson` is the host node's delta body as canonical JSON
+    /// (sorted keys, no whitespace, without hostSig/cosigners/cosigs/disputes); `hostSig` the 64-byte ed25519 signature
+    /// the host made over `"delta" ‖ 0x00 ‖ deltaJson`.
     function claim(bytes32 matchId, bytes calldata deltaJson, bytes calldata hostSig) external nonReentrant {
-        if (claimed[matchId]) revert AlreadyClaimed();
-        Parsed memory p = _parse(deltaJson);
-        if (p.matchId != matchId) revert MatchMismatch();
-        if (!p.rulesetOk) revert WrongRuleset();
-        if (!p.players) revert NotPlayers();
-        if (!p.replayable) revert NotReplayable();
-        if (!p.complete) revert NotComplete();
-        if (!Ed25519.verify(p.hostKey, hostSig, abi.encodePacked("delta", bytes1(0), deltaJson))) revert BadSignature();
-        _checkChain(matchId, p);
+        Parsed memory p = _verified(matchId, deltaJson, hostSig);
+        if (p.attestation != ATT_PLAYERS) revert NotPlayers();
+        _checkPlayers(matchId, p);
         claimed[matchId] = true;
         _payout(matchId, p);
     }
 
-    /// The host must be a bonded LitNode; a match MatchBook knows must be FINAL on the same result.
-    function _checkChain(bytes32 matchId, Parsed memory p) private view {
+    /// Pay out a settled LitNode match the loser never signed: see the contract notes. `winnerSig` is the winner's
+    /// 64-byte ed25519 ledger signature (empty for a draw). A players-attested delta is accepted here too.
+    function claimWithWinner(bytes32 matchId, bytes calldata deltaJson, bytes calldata hostSig, bytes calldata winnerSig) external nonReentrant {
+        Parsed memory p = _verified(matchId, deltaJson, hostSig);
+        if (p.attestation == ATT_PLAYERS) {
+            _checkPlayers(matchId, p);
+        } else if (p.attestation == ATT_RELAY || p.attestation == ATT_HOST) {
+            if (!p.placed) revert NotPlaced();
+            (address operator, , bool bonded) = nodeStake.standingOf(p.hostKey);
+            if (!bonded) revert HostNotBonded(p.hostKey);
+            address publisher = titleRegistry.ownerOf(titleId);
+            if (operator != publisher) revert NotPublisherHost(operator, publisher);
+            _checkBook(matchId, p);
+            if (p.scoreA != p.scoreB && !Ed25519.verify(p.scoreA > p.scoreB ? p.keyA : p.keyB, winnerSig, _ledgerMessage(deltaJson, p))) revert BadWinnerSignature();
+        } else {
+            revert NotPlayers();
+        }
+        claimed[matchId] = true;
+        _payout(matchId, p);
+    }
+
+    /// What a player's ledger signature covers (protocol/log.js signLedger): `ledger` ‖ 0 ‖ canonical
+    /// {buildHash, head, matchId, ticks}, rebuilt from the delta's own raw values.
+    function _ledgerMessage(bytes calldata j, Parsed memory p) private pure returns (bytes memory) {
+        if ((p.seen & F_LEDGER) != F_LEDGER) revert Malformed(j.length);
+        bytes memory front = bytes.concat("ledger", bytes1(0), '{"buildHash":', j[p.buildStart:p.buildEnd], ',"head":', j[p.headStart:p.headEnd]);
+        return bytes.concat(front, ',"matchId":', j[p.matchStart:p.matchEnd], ',"ticks":', j[p.ticksStart:p.ticksEnd], "}");
+    }
+
+    /// The delta, parsed, for this match and ruleset, finished, and signed by its host.
+    function _verified(bytes32 matchId, bytes calldata deltaJson, bytes calldata hostSig) private view returns (Parsed memory p) {
+        if (claimed[matchId]) revert AlreadyClaimed();
+        p = _parse(deltaJson);
+        if (p.matchId != matchId) revert MatchMismatch();
+        if (!p.rulesetOk) revert WrongRuleset();
+        if (!p.replayable) revert NotReplayable();
+        if (!p.complete) revert NotComplete();
+        if (!Ed25519.verify(p.hostKey, hostSig, abi.encodePacked("delta", bytes1(0), deltaJson))) revert BadSignature();
+    }
+
+    /// Both players signed: the host must be bonded now, unless MatchBook already holds the match FINAL on this result.
+    function _checkPlayers(bytes32 matchId, Parsed memory p) private view {
+        if (_checkBook(matchId, p)) return;
         (, , bool bonded) = nodeStake.standingOf(p.hostKey);
         if (!bonded) revert HostNotBonded(p.hostKey);
+    }
+
+    /// A match MatchBook knows must be FINAL on the same result. True when it is; false when MatchBook has no record.
+    function _checkBook(bytes32 matchId, Parsed memory p) private view returns (bool final_) {
         (uint8 status, bytes32 onChain, , ) = matchBook.statusOf(matchId);
-        if (status == STATUS_NONE) return;
+        if (status == STATUS_NONE) return false;
         if (status != STATUS_FINAL) revert NotFinal(status);
         if (onChain != p.resultHash) revert ResultMismatch();
+        return true;
     }
 
     /// Twice the smaller stake is the pot; the winner takes it less the fee, a draw moves nothing.
@@ -251,11 +317,22 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
         uint256 scoreA;
         uint256 scoreB;
         bool rulesetOk;
-        bool players;
+        uint8 attestation;
+        bool placed;
         bool replayable;
         bool complete;
-        uint8 seen; // bit flags of the required keys found
+        uint8 seen; // bit flags of the keys found
+        // raw value spans, for rebuilding the ledger body the winner signed
+        uint256 buildStart; uint256 buildEnd;
+        uint256 headStart; uint256 headEnd;
+        uint256 matchStart; uint256 matchEnd;
+        uint256 ticksStart; uint256 ticksEnd;
     }
+
+    uint8 private constant ATT_OTHER = 0;
+    uint8 private constant ATT_PLAYERS = 1;
+    uint8 private constant ATT_RELAY = 2;
+    uint8 private constant ATT_HOST = 3;
 
     uint8 private constant F_HOST = 1;
     uint8 private constant F_MATCH = 2;
@@ -263,8 +340,12 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
     uint8 private constant F_PARTS = 8;
     uint8 private constant F_SCORES = 16;
     uint8 private constant F_ALL = 31;
+    uint8 private constant F_BUILD = 32;
+    uint8 private constant F_HEAD = 64;
+    uint8 private constant F_TICKS = 128;
+    uint8 private constant F_LEDGER = F_BUILD | F_HEAD | F_TICKS;
 
-    function _parse(bytes calldata j) internal pure returns (Parsed memory p) {
+    function _parse(bytes calldata j) internal view returns (Parsed memory p) {
         uint256 n = j.length;
         if (n < 2 || j[0] != "{") revert Malformed(0);
         uint256 i = 1;
@@ -281,16 +362,34 @@ contract LitNodeWager is Ownable, ReentrancyGuard {
             i = _skipValue(j, i);
             _take(j, p, key, keyLen, vStart, i);
         }
-        if (p.seen != F_ALL) revert Malformed(n);
+        if ((p.seen & F_ALL) != F_ALL) revert Malformed(n);
     }
 
     /// Handle one top-level key whose value spans j[vStart:vEnd].
-    function _take(bytes calldata j, Parsed memory p, bytes32 key, uint256 keyLen, uint256 vStart, uint256 vEnd) private pure {
+    function _take(bytes calldata j, Parsed memory p, bytes32 key, uint256 keyLen, uint256 vStart, uint256 vEnd) private view {
         if (keyLen == 6 && key == bytes32("hostId")) { p.hostKey = _hex32(j, vStart, vEnd); p.seen |= F_HOST; }
-        else if (keyLen == 7 && key == bytes32("matchId")) { p.matchId = _hex32(j, vStart, vEnd); p.seen |= F_MATCH; }
+        else if (keyLen == 7 && key == bytes32("matchId")) { p.matchId = _hex32(j, vStart, vEnd); p.matchStart = vStart; p.matchEnd = vEnd; p.seen |= F_MATCH; }
         else if (keyLen == 10 && key == bytes32("resultHash")) { p.resultHash = _hex32(j, vStart, vEnd); p.seen |= F_RESULT; }
-        else if (keyLen == 9 && key == bytes32("rulesetId")) { p.rulesetOk = _isString(j, vStart, vEnd, RULESET); }
-        else if (keyLen == 11 && key == bytes32("attestation")) { p.players = _isString(j, vStart, vEnd, bytes("players")); }
+        else if (keyLen == 9 && key == bytes32("rulesetId")) {
+            p.rulesetOk = vEnd - vStart >= 2 && j[vStart] == '"' && j[vEnd - 1] == '"' && uint256(keccak256(j[vStart + 1:vEnd - 1])) == titleId;
+        }
+        else if (keyLen == 11 && key == bytes32("attestation")) {
+            p.attestation = _isString(j, vStart, vEnd, bytes("players")) ? ATT_PLAYERS
+                : _isString(j, vStart, vEnd, bytes("relay")) ? ATT_RELAY
+                : _isString(j, vStart, vEnd, bytes("host")) ? ATT_HOST : ATT_OTHER;
+        }
+        else if (keyLen == 6 && key == bytes32("placed")) { p.placed = vEnd - vStart == 4 && j[vStart] == "t" && j[vStart + 1] == "r" && j[vStart + 2] == "u" && j[vStart + 3] == "e"; }
+        else if (keyLen == 9 && key == bytes32("buildHash")) {
+            // "<64 hex>" or null, kept raw: it goes back into the ledger body byte for byte
+            if (!(vEnd - vStart == 4 && j[vStart] == "n") ) _hex32(j, vStart, vEnd);
+            p.buildStart = vStart; p.buildEnd = vEnd; p.seen |= F_BUILD;
+        }
+        else if (keyLen == 4 && key == bytes32("head")) { _hex32(j, vStart, vEnd); p.headStart = vStart; p.headEnd = vEnd; p.seen |= F_HEAD; }
+        else if (keyLen == 5 && key == bytes32("ticks")) {
+            if (vEnd <= vStart || vEnd - vStart > 9) revert Malformed(vStart);
+            for (uint256 k = vStart; k < vEnd; k++) if (uint8(j[k]) < 48 || uint8(j[k]) > 57) revert Malformed(k);
+            p.ticksStart = vStart; p.ticksEnd = vEnd; p.seen |= F_TICKS;
+        }
         else if (keyLen == 4 && key == bytes32("kind")) { p.replayable = _isString(j, vStart, vEnd, bytes("replayable")); }
         else if (keyLen == 8 && key == bytes32("complete")) { p.complete = vEnd - vStart == 4 && j[vStart] == "t" && j[vStart + 1] == "r" && j[vStart + 2] == "u" && j[vStart + 3] == "e"; }
         else if (keyLen == 12 && key == bytes32("participants")) {

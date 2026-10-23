@@ -1,4 +1,5 @@
-// LitNodeWager: stakes bound to LitNode player keys, paid out on a host node's signed delta.
+// LitNodeWager (v2): stakes bound to LitNode player keys, paid out on a host node's signed delta: both players'
+// ledger signatures (claim), or the winner's alone on a placed match the publisher's own host settled (claimWithWinner).
 // The delta is built the way node/settle.js builds it and signed with a real ed25519 key over
 // "delta\0" + canonical(body) (protocol/keys.js signingBytes); canonical() is cross-checked against
 // the litnode checkout's protocol/canonical.js when it is present.
@@ -10,7 +11,7 @@ const { pathToFileURL } = require("node:url");
 const { ethers, network } = require("hardhat");
 
 const LITNODE_DIR = process.env.LITNODE_DIR ?? join(__dirname, "..", "..", "..", "LITNODE", "litnode");
-const RULESET = "rapture-chess.v1";
+const RULESET = "rapture-chess.v2";
 const DELAY = 4000n;
 const ONE = ethers.parseEther("1");
 
@@ -52,17 +53,25 @@ const signDelta = (body, host) => {
   return { json, sig: `0x${host.sign(Buffer.concat([Buffer.from("delta\0", "utf8"), Buffer.from(json, "utf8")]))}` };
 };
 
+/** A player's ledger signature (protocol/log.js signLedger): `ledger` NUL canonical { matchId, ticks, head, buildHash }. */
+const ledgerBodyOf = (delta) => ({ matchId: delta.matchId, ticks: delta.ticks, head: delta.head, buildHash: delta.buildHash });
+const signLedger = (player, delta) => player.sign(Buffer.from(`ledger\0${canonical(ledgerBodyOf(delta))}`, "utf8"));
+
 async function deploy({ profile = true } = {}) {
-  const [owner, alice, bob, carol] = await ethers.getSigners();
+  const [owner, alice, bob, carol, publisher] = await ethers.getSigners();
   const nodeStake = await (await ethers.getContractFactory("MockNodeStake")).deploy();
   const matchBook = await (await ethers.getContractFactory("MockMatchBook")).deploy();
   const profileC = await (await ethers.getContractFactory("MockPlayerProfile")).deploy();
-  const wager = await (await ethers.getContractFactory("LitNodeWager")).deploy(owner.address, await nodeStake.getAddress(), await matchBook.getAddress(), profile ? await profileC.getAddress() : ethers.ZeroAddress, DELAY);
+  const titles = await (await ethers.getContractFactory("MockTitleRegistry")).deploy();
+  await titles.set(RULESET, publisher.address);
+  const wager = await (await ethers.getContractFactory("LitNodeWager")).deploy(owner.address, await nodeStake.getAddress(), await matchBook.getAddress(), profile ? await profileC.getAddress() : ethers.ZeroAddress, await titles.getAddress(), RULESET, DELAY);
   await wager.waitForDeployment();
   const host = nodeKey();
   await nodeStake.set(b32(host.pub), true);
-  const ka = hex64(), kb = hex64();
-  return { owner, alice, bob, carol, nodeStake, matchBook, profileC, wager, host, ka, kb };
+  await nodeStake.setOperator(b32(host.pub), publisher.address);   // the publisher's own host
+  const pa = nodeKey(), pb = nodeKey();                             // the players' ed25519 keys
+  const ka = pa.pub, kb = pb.pub;
+  return { owner, alice, bob, carol, publisher, nodeStake, matchBook, profileC, titles, wager, host, pa, pb, ka, kb };
 }
 
 async function staked(opts) {
@@ -179,7 +188,7 @@ describe("LitNodeWager", () => {
     await assert.rejects(t.wager.claim(b32(matchId), ethers.toUtf8Bytes(json), sig), /HostNotBonded/);
   });
 
-  it("requires rapture-chess.v1, a replayable kind, a finished match and both players' signatures", async () => {
+  it("requires its ruleset, a replayable kind, a finished match and, for claim, both players' signatures", async () => {
     const t = await staked();
     const matchId = hex64();
     const base = { matchId, host: t.host, a: t.ka, b: t.kb, scores: sortedScores(t.ka, t.kb, 1, 0) };
@@ -188,6 +197,7 @@ describe("LitNodeWager", () => {
       await assert.rejects(t.wager.claim(b32(matchId), ethers.toUtf8Bytes(json), sig), re);
     };
     await expect({ rulesetId: "tug.v1" }, /WrongRuleset/);
+    await expect({ rulesetId: "rapture-chess.v1" }, /WrongRuleset/);
     await expect({ attestation: "host" }, /NotPlayers/);
     await expect({ attestation: "relay" }, /NotPlayers/);
     await expect({ kind: "attested" }, /NotReplayable/);
@@ -211,6 +221,18 @@ describe("LitNodeWager", () => {
     await t.matchBook.set(b32(matchId), 4, b32(body.resultHash));  // Void
     await assert.rejects(t.wager.claim(b32(matchId), ethers.toUtf8Bytes(json), sig), /NotFinal/);
     await t.matchBook.set(b32(matchId), 3, b32(body.resultHash));  // Final, same result
+    await t.wager.claim(b32(matchId), ethers.toUtf8Bytes(json), sig);
+    assert.equal(await t.wager.claimed(b32(matchId)), true);
+  });
+
+  it("a both-signed ranked pot survives its host unbonding once MatchBook holds it Final", async () => {
+    const t = await staked();
+    const matchId = hex64();
+    const body = deltaBody({ matchId, host: t.host, a: t.ka, b: t.kb, scores: sortedScores(t.ka, t.kb, 1, 0) });
+    const { json, sig } = signDelta(body, t.host);
+    await t.nodeStake.set(b32(t.host.pub), false);
+    await assert.rejects(t.wager.claim(b32(matchId), ethers.toUtf8Bytes(json), sig), /HostNotBonded/);
+    await t.matchBook.set(b32(matchId), 3, b32(body.resultHash));
     await t.wager.claim(b32(matchId), ethers.toUtf8Bytes(json), sig);
     assert.equal(await t.wager.claimed(b32(matchId)), true);
   });
@@ -246,5 +268,97 @@ describe("LitNodeWager", () => {
     // with the stake gone, the wallet may bind a new key
     await t.wager.connect(t.alice).stake(b32(hex64()), { value: ONE });
     assert.equal(await t.wager.walletOf(b32(t.ka)), ethers.ZeroAddress);
+  });
+});
+
+describe("LitNodeWager v2: a match the loser never signed (claimWithWinner)", () => {
+  /** A placed match the publisher's host settled without the loser's signature. */
+  const unsigned = (t, { winner = "a", attestation = "relay", overrides = {} } = {}) => {
+    const matchId = hex64();
+    const scores = winner === "draw" ? sortedScores(t.ka, t.kb, 0.5, 0.5) : winner === "a" ? sortedScores(t.ka, t.kb, 1, 0) : sortedScores(t.ka, t.kb, 0, 1);
+    const body = deltaBody({ matchId, host: t.host, a: t.ka, b: t.kb, scores, overrides: { mode: "casual", signatures: {}, attestation, relay: attestation === "relay" ? { id: hex64() } : null, ...overrides } });
+    return { matchId, body, ...signDelta(body, t.host) };
+  };
+  const claimW = (t, m, winnerSig, from = t.carol) => t.wager.connect(from).claimWithWinner(b32(m.matchId), ethers.toUtf8Bytes(m.json), m.sig, winnerSig ? `0x${winnerSig}` : "0x");
+
+  it("the winner's ledger signature is exactly what LitNode's signLedger makes", async () => {
+    const keys = join(LITNODE_DIR, "protocol", "keys.js"), logf = join(LITNODE_DIR, "protocol", "log.js");
+    if (!existsSync(keys) || !existsSync(logf)) { console.log("  (litnode checkout not found: skipping the cross-check)"); return; }
+    const { verify } = await import(pathToFileURL(keys).href);
+    const { ledgerBody, LEDGER_TAG } = await import(pathToFileURL(logf).href);
+    const t = await deploy();
+    const m = unsigned(t);
+    assert.equal(await verify(LEDGER_TAG, ledgerBody(ledgerBodyOf(m.body)), signLedger(t.pa, m.body), t.ka), true);
+    const nullBuild = { ...m.body, buildHash: null };
+    assert.equal(await verify(LEDGER_TAG, ledgerBody(ledgerBodyOf(nullBuild)), signLedger(t.pa, nullBuild), t.ka), true);
+  });
+
+  it("pays the winner on a relay- or host-attested placed match with the winner's signature", async () => {
+    for (const attestation of ["relay", "host"]) {
+      const t = await staked();
+      const m = unsigned(t, { attestation });
+      await assert.rejects(t.wager.claim(b32(m.matchId), ethers.toUtf8Bytes(m.json), m.sig), /NotPlayers/);
+      const before = await ethers.provider.getBalance(t.alice.address);
+      const rc = await (await claimW(t, m, signLedger(t.pa, m.body))).wait();
+      if (attestation === "relay") console.log(`  claimWithWinner gas: ${rc.gasUsed}`);
+      assert.equal((await ethers.provider.getBalance(t.alice.address)) - before, 2n * ONE);
+      assert.equal(await t.wager.claimed(b32(m.matchId)), true);
+    }
+  });
+
+  it("refuses the loser's signature, a signature over another log, and none at all", async () => {
+    const t = await staked();
+    const m = unsigned(t, { winner: "b" });
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /BadWinnerSignature/);                   // the loser's
+    await assert.rejects(claimW(t, m, signLedger(t.pb, { ...m.body, head: hex64() })), /BadWinnerSignature/);
+    await assert.rejects(claimW(t, m, signLedger(t.pb, { ...m.body, ticks: m.body.ticks + 1 })), /BadWinnerSignature/);
+    await assert.rejects(claimW(t, m, null), /BadWinnerSignature/);
+    await claimW(t, m, signLedger(t.pb, m.body));
+  });
+
+  it("a draw needs no signature and moves nothing", async () => {
+    const t = await staked();
+    const m = unsigned(t, { winner: "draw", attestation: "host" });
+    await claimW(t, m, null);
+    assert.equal((await t.wager.stakeOf(t.alice.address))[0], ONE);
+    assert.equal((await t.wager.stakeOf(t.bob.address))[0], ONE);
+    assert.equal(await t.wager.claimed(b32(m.matchId)), true);
+  });
+
+  it("only a placed match, settled by the title publisher's own bonded host", async () => {
+    const t = await staked();
+    let m = unsigned(t, { overrides: { placed: false } });
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /NotPlaced/);
+    m = unsigned(t);
+    await t.nodeStake.setOperator(b32(t.host.pub), t.carol.address);                 // someone else's node
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /NotPublisherHost/);
+    await t.nodeStake.setOperator(b32(t.host.pub), t.publisher.address);
+    await t.titles.set(RULESET, t.carol.address);                                      // the title changed hands
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /NotPublisherHost/);
+    await t.titles.set(RULESET, t.publisher.address);
+    await t.nodeStake.set(b32(t.host.pub), false);
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /HostNotBonded/);
+    await t.nodeStake.set(b32(t.host.pub), true);
+    m = unsigned(t, { attestation: "attested" });
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /NotPlayers/);
+  });
+
+  it("follows MatchBook, and accepts a both-signed delta as claim does", async () => {
+    const t = await staked();
+    const m = unsigned(t);
+    await t.matchBook.set(b32(m.matchId), 2, b32(m.body.resultHash));
+    await assert.rejects(claimW(t, m, signLedger(t.pa, m.body)), /NotFinal/);
+    await t.matchBook.set(b32(m.matchId), 3, b32(m.body.resultHash));
+    await claimW(t, m, signLedger(t.pa, m.body));
+    const both = signDelta(deltaBody({ matchId: hex64(), host: t.host, a: t.ka, b: t.kb, scores: sortedScores(t.ka, t.kb, 1, 0) }), t.host);
+    await t.wager.connect(t.alice).stake(b32(t.ka), { value: ONE });
+    await t.wager.connect(t.bob).stake(b32(t.kb), { value: ONE });
+    await t.wager.claimWithWinner(b32(JSON.parse(both.json).matchId), ethers.toUtf8Bytes(both.json), both.sig, "0x");
+  });
+
+  it("exposes its ruleset and title", async () => {
+    const t = await deploy();
+    assert.equal(await t.wager.rulesetId(), RULESET);
+    assert.equal(await t.wager.titleId(), BigInt(ethers.keccak256(ethers.toUtf8Bytes(RULESET))));
   });
 });
