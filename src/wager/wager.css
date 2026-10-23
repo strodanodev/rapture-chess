@@ -1,18 +1,18 @@
-/* Wager panel: same tokens as the HUD (src/style.css), scoped under .wager */
-.wager { background: var(--panel, rgba(10, 10, 16, 0.72)); border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); border-radius: 10px; padding: 12px 14px; color: var(--text, #ece6da); font-size: 12px; backdrop-filter: blur(10px); display: grid; gap: 8px; width: 264px; max-width: 100%; }
+/* Wager panel: lives in the Stakes dialog, on the Rapture design tokens (src/ui/theme.css), scoped under .wager */
+.wager { display: grid; gap: 12px; color: var(--text); font-size: 13.5px; width: 100%; }
 .wager[hidden] { display: none; }
-.wager h3 { margin: 0; font-family: var(--font-display, Georgia, serif); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold, #ffc455); }
-.wager h4 { margin: 0; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted, #9a9384); }
-.wager .body { display: grid; gap: 8px; }
-.wager .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.wager .line { margin: 0; }
-.wager label { color: var(--muted, #9a9384); letter-spacing: 0.08em; text-transform: uppercase; font-size: 10px; }
-.wager input { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); color: inherit; border-radius: 5px; padding: 7px 9px; font: inherit; }
-.wager input:focus { outline: none; border-color: var(--gold, #ffc455); }
-.wager button { background: rgba(255, 255, 255, 0.04); color: inherit; border: 1px solid var(--line, rgba(255, 196, 85, 0.22)); border-radius: 6px; padding: 8px 12px; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; cursor: pointer; }
-.wager button:hover { border-color: var(--gold, #ffc455); background: rgba(255, 196, 85, 0.12); }
-.wager button.primary { background: linear-gradient(180deg, #ffd27a, #c9932f); color: #1a1206; border-color: #ffe2a0; font-weight: 600; }
-.wager button:disabled { opacity: 0.5; cursor: default; }
-.wager .note { color: var(--muted, #9a9384); line-height: 1.45; margin: 0; }
-.wager .note.err { color: #ff8a6a; }
-.wager .claim { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line, rgba(255, 196, 85, 0.22)); }
+.wager h3 { display: none; }
+.wager h4 { margin: 0; font-family: var(--font-display); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-2); }
+.wager .body { display: grid; gap: 12px; }
+.wager .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wager .line { margin: 0; font-size: 15px; color: var(--ivory); }
+.wager label { color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-size: 10px; }
+.wager input { flex: 1; min-width: 0; min-height: var(--tap); background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line); color: inherit; border-radius: 3px; padding: 0 14px; font: inherit; font-size: 15px; user-select: text; -webkit-user-select: text; }
+.wager input:focus { outline: none; border-color: var(--gold-2); box-shadow: 0 0 0 3px rgba(255, 201, 94, 0.15); }
+.wager button { min-height: var(--tap); background: rgba(255, 255, 255, 0.04); color: inherit; border: 1px solid var(--line-strong); border-radius: 3px; padding: 0 16px; font-family: var(--font-display); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.wager button:hover { border-color: var(--gold-1); background: rgba(255, 201, 94, 0.1); }
+.wager button.primary { background: linear-gradient(180deg, #ffe7a8, #ffc457 45%, #d68f25 55%, #f1b14a); color: #241604; border-color: #fff1cc; }
+.wager button:disabled { opacity: 0.45; cursor: default; }
+.wager .note { color: var(--muted); line-height: 1.5; margin: 0; font-size: 12.5px; }
+.wager .note.err { color: #ff9a7a; }
+.wager .claim { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }

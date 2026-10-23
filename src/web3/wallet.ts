@@ -4,7 +4,7 @@
  */
 import { createWallet, type Wallet } from 'deckwright/web/lib/wallet.js';
 import { createHoldings, type Holdings } from 'deckwright/web/lib/holdings.js';
-import type { Collection } from '../roster';
+import type { Card, Collection } from '../roster';
 
 export interface Web3Link {
   wallet: Wallet;
@@ -14,6 +14,10 @@ export interface Web3Link {
   toggle(): Promise<void>;
   restore(): Promise<void>;
   shortAddress(): string;
+  /** The snapshot cards behind freshly minted token ids (a pack just opened). */
+  identify(tokenIds: string[]): Promise<Card[]>;
+  /** Re-read the wallet's holdings (after a pack opens). */
+  refresh(): Promise<void>;
 }
 
 export function createWeb3Link(snapshot: Collection): Web3Link {
@@ -32,6 +36,13 @@ export function createWeb3Link(snapshot: Collection): Web3Link {
     },
     async restore() { await wallet.restore?.().catch(() => null); },
     shortAddress() { const a = wallet.snapshot().address; return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ''; },
+    async identify(tokenIds) {
+      if (!holdings || !tokenIds.length) return [];
+      const found = await holdings.identify(tokenIds);
+      const byId = new Map(snapshot.cards.map((c) => [c.tokenId, c]));
+      return tokenIds.map((t) => found.get(t)).map((c) => (c ? byId.get(String(c.tokenId)) : undefined)).filter((c): c is Card => !!c);
+    },
+    refresh: () => refresh(),
   };
   let gen = 0;
   async function refresh(): Promise<void> {

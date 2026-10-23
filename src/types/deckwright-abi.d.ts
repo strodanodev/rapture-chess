@@ -21,6 +21,8 @@ declare module 'deckwright/web/lib/chain.js' {
     call(tx: { to: string; data: string; from?: string; blockTag?: string }, opts?: { signal?: AbortSignal }): Promise<string>;
     waitForReceipt(hash: string, opts?: { timeoutMs?: number; pollMs?: number; signal?: AbortSignal }): Promise<{ status: string | number; blockNumber?: string; logs?: unknown[] } & Record<string, unknown>>;
     request(method: string, params?: unknown[], opts?: { signal?: AbortSignal }): Promise<unknown>;
+    getBalance(address: string): Promise<bigint>;
+    estimateGas(tx: { from?: string; to: string; data?: string; value?: bigint }): Promise<bigint>;
   }
   export function createChain(rpc: string, opts?: Record<string, unknown>): ChainClient;
 }

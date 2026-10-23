@@ -46,7 +46,7 @@ export class LocalMatch implements Match {
   private pending = 0;
   private closed = false;
 
-  constructor(public readonly seed: string, public readonly you: Side, private readonly events: MatchEvents, private readonly botBudgetMs = 1100) {
+  constructor(public readonly seed: string, public readonly you: Side, private readonly events: MatchEvents, private readonly botBudgetMs = 1100, private readonly botDepth = 6) {
     this.participants = ['alliance', 'horde'];
     this.state = this.rules.init(seed, this.participants);
   }
@@ -75,7 +75,7 @@ export class LocalMatch implements Match {
   /** Ask the bot for the opponent's move when it is to act. */
   poke(): void {
     if (this.closed || this.state.over || this.state.turn === this.you) return;
-    this.events.onStatus('The Horde is thinking…');
+    this.events.onStatus('The Oracle is thinking…');
     const id = ++this.pending;
     const w = this.worker ?? (this.worker = new Worker(new URL('./bot.worker.ts', import.meta.url), { type: 'module' }));
     w.onmessage = (ev: MessageEvent<{ id: number; action: number }>) => {
@@ -83,7 +83,7 @@ export class LocalMatch implements Match {
       const side = this.you === 0 ? 1 : 0;
       this.record(side, ev.data.action);
     };
-    w.postMessage({ id, fen: this.state.fen, budgetMs: this.botBudgetMs });
+    w.postMessage({ id, fen: this.state.fen, budgetMs: this.botBudgetMs, maxDepth: this.botDepth });
   }
 
   private record(side: Side, action: number): void {

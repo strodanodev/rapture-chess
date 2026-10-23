@@ -18,6 +18,8 @@
     "title": "node scripts/build-title.mjs"
   },
   "dependencies": {
+    "@fontsource/cinzel": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "@noble/hashes": "1.8.0",
     "chess.js": "1.4.0",
     "deckwright": "github:strodanodev/deckwright",

@@ -1,0 +1,11 @@
+{
+  "name": "Rapture Chess",
+  "short_name": "Rapture Chess",
+  "description": "3D chess with the Rapture ARC 1 champions, settled on LitNode.",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#050409",
+  "theme_color": "#050409",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

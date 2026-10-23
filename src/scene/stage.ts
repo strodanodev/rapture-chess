@@ -16,14 +16,16 @@ import {
 import { N8AOPostPass } from 'n8ao';
 import { tweens } from './tween';
 
-export type Quality = 'ultra' | 'high' | 'medium' | 'low';
-export const QUALITIES: Quality[] = ['low', 'medium', 'high', 'ultra'];
+export type Quality = 'ultra' | 'high' | 'medium' | 'low' | 'lite';
+export const QUALITIES: Quality[] = ['lite', 'low', 'medium', 'high', 'ultra'];
 interface Preset { pixelRatio: number; ao: boolean; aoSamples: number; mirror: number; shadow: number; smaa: boolean; bloomKernel: KernelSize; chroma: boolean }
 const PRESETS: Record<Quality, Preset> = {
   ultra: { pixelRatio: 2, ao: true, aoSamples: 16, mirror: 1024, shadow: 2048, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true },
   high: { pixelRatio: 1.5, ao: true, aoSamples: 8, mirror: 512, shadow: 2048, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true },
   medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false },
   low: { pixelRatio: 1, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false },
+  // the floor for weak phone GPUs: three quarters of the CSS resolution and no shadow pass
+  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, mirror: 0, shadow: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false },
 };
 
 export const isMobile = (): boolean => matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 820;
@@ -53,6 +55,14 @@ export class Stage {
   private smaa: SMAAEffect;
   /** Set false while assets load: those frames say nothing about the game's frame rate. */
   governing = true;
+  /** An opaque menu covers the canvas: skip drawing (the clocks and tweens keep running). */
+  paused = false;
+  /** Attract mode: the camera circles the board slowly (the main menu). */
+  attract = false;
+  private attractAngle = 0.6;
+  private shakeLeft = 0;
+  private shakeAmp = 0;
+  private readonly shakeOffset = new THREE.Vector3();
   private chroma: ChromaticAberrationEffect;
   private mirror: Reflector | null = null;
   private frames = 0;
@@ -143,12 +153,13 @@ export class Stage {
   setQuality(q: Quality): void {
     const p = PRESETS[q];
     this.quality = q;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, p.pixelRatio));
+    this.renderer.setPixelRatio(p.pixelRatio < 1 ? p.pixelRatio : Math.min(window.devicePixelRatio, p.pixelRatio));
     if (this.ao) { this.ao.enabled = p.ao; this.ao.configuration.aoSamples = p.aoSamples; }
     this.smaa.blendMode.setBlendFunction(p.smaa ? BlendFunction.NORMAL : BlendFunction.SKIP);
     this.bloom.kernelSize = p.bloomKernel;
     this.chroma.blendMode.setBlendFunction(p.chroma ? BlendFunction.NORMAL : BlendFunction.SKIP);
-    if (this.keyLight.shadow.mapSize.x !== p.shadow) {
+    this.keyLight.castShadow = p.shadow > 0;
+    if (p.shadow && this.keyLight.shadow.mapSize.x !== p.shadow) {
       this.keyLight.shadow.mapSize.set(p.shadow, p.shadow);
       this.keyLight.shadow.map?.dispose();
       this.keyLight.shadow.map = null;
@@ -177,7 +188,7 @@ export class Stage {
   }
   /** The plain floor shown when the mirror is off. */
   private readonly floorPlate = (() => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.35, metalness: 0.6, envMapIntensity: 0.8 }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.62, metalness: 0.35, envMapIntensity: 0.18 }));
     m.rotation.x = -Math.PI / 2;
     m.position.y = -0.165;
     m.receiveShadow = true;
@@ -272,11 +283,37 @@ export class Stage {
       const dt = Math.min(0.05, this.timer.getDelta()), t = this.timer.getElapsed();
       this.sky.material.uniforms.time.value = t;
       tweens.update(dt);
-      this.controls.update();
+      if (this.attract) this.orbit(dt);
+      else this.controls.update();
       for (const fn of this.updaters) fn(dt, t);
+      if (this.paused) return;
+      const shaking = this.shakeLeft > 0;
+      if (shaking) {
+        this.shakeLeft -= dt;
+        const k = this.shakeAmp * Math.max(0, this.shakeLeft) * 4;
+        this.shakeOffset.set((Math.random() - 0.5) * k, (Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
+        this.camera.position.add(this.shakeOffset);
+      }
       this.composer.render(dt);
+      if (shaking) this.camera.position.sub(this.shakeOffset);
       this.govern(dt);
     });
+  }
+
+  /** A short camera tremor (a capture lands). */
+  shake(amplitude = 0.06, seconds = 0.28): void { this.shakeAmp = amplitude; this.shakeLeft = seconds; }
+
+  /** The menu camera: a slow, high circle around the board. */
+  private orbit(dt: number): void {
+    this.attractAngle += dt * 0.06;
+    const r = 15.5, a = this.attractAngle;
+    this.camera.position.set(Math.sin(a) * r, 6.4 + Math.sin(a * 0.7) * 0.8, Math.cos(a) * r);
+    this.camera.lookAt(this.controls.target);
+  }
+  setAttract(on: boolean): void {
+    this.attract = on;
+    this.controls.enabled = !on;
+    if (on) this.attractAngle = Math.atan2(this.camera.position.x, this.camera.position.z);
   }
 
   /** Glide the camera to a new orbit position over `seconds` (the controls keep their target). */

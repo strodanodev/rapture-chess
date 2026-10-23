@@ -69,14 +69,14 @@ function search(c: Chess, depth: number, alpha: number, beta: number): number {
   return best;
 }
 
-function think(fen: string, budgetMs: number): Move | null {
+function think(fen: string, budgetMs: number, maxDepth = 6): Move | null {
   const c = new Chess(fen);
   const moves = order(c.moves({ verbose: true }));
   if (!moves.length) return null;
   deadline = performance.now() + budgetMs;
   nodes = 0;
   let best = moves[0];
-  for (let depth = 1; depth <= 6; depth++) {
+  for (let depth = 1; depth <= maxDepth; depth++) {
     let bestAtDepth = best, bestScore = -Infinity;
     try {
       // the previous best first: a cut-off early makes the deeper pass cheap
@@ -97,8 +97,8 @@ function think(fen: string, budgetMs: number): Move | null {
   return best;
 }
 
-self.onmessage = (ev: MessageEvent<{ id: number; fen: string; budgetMs: number }>) => {
-  const { id, fen, budgetMs } = ev.data;
-  const m = think(fen, budgetMs);
+self.onmessage = (ev: MessageEvent<{ id: number; fen: string; budgetMs: number; maxDepth?: number }>) => {
+  const { id, fen, budgetMs, maxDepth } = ev.data;
+  const m = think(fen, budgetMs, maxDepth);
   self.postMessage({ id, action: m ? encodeMove(m.from, m.to, m.promotion ?? '') : 0, nodes });
 };

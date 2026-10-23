@@ -2,93 +2,52 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#050409" />
+<meta name="color-scheme" content="dark" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Rapture Chess" />
 <title>Rapture Chess</title>
-<meta name="description" content="3D chess on LitVM: the Rapture ARC 1 champions take the board. Built with Deckwright and three.js." />
+<meta name="description" content="3D chess on LitVM: the Rapture ARC 1 champions take the board. Built with Deckwright and three.js, settled on LitNode." />
 <link rel="icon" href="/favicon.svg" />
-<link rel="stylesheet" href="/src/style.css" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<style>
+  /* the boot screen paints before any script or stylesheet arrives */
+  html, body { margin: 0; height: 100%; background: #050409; overflow: hidden; }
+  #boot { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 42%, #1c1424 0%, #07060b 62%, #030205 100%); color: #ffc95e; font-family: Georgia, 'Palatino Linotype', serif; transition: opacity 0.8s ease, visibility 0.8s; }
+  #boot.done { opacity: 0; visibility: hidden; }
+  #boot .b-in { display: grid; justify-items: center; gap: 18px; width: min(360px, 78vw); text-align: center; }
+  #boot .b-emb { position: relative; width: 132px; height: 132px; }
+  #boot .b-emb svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #boot .b-spin { animation: bspin 6s linear infinite; opacity: 0.85; }
+  #boot .b-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 190, 80, 0.22), transparent 62%); animation: bpulse 2.4s ease-in-out infinite; }
+  #boot h1 { margin: 6px 0 0; font-weight: 600; font-size: 30px; letter-spacing: 0.32em; text-transform: uppercase; color: #fff1cc; text-indent: 0.32em; }
+  #boot h1 span { display: block; margin-top: 6px; font-size: 13px; letter-spacing: 0.9em; text-indent: 0.9em; color: #d9982f; }
+  #boot .b-track { width: 100%; height: 2px; background: rgba(255, 201, 94, 0.14); overflow: hidden; }
+  #boot #boot-bar { height: 100%; background: linear-gradient(90deg, #8a5c1c, #ffe2a0, #8a5c1c); transform: scaleX(0.02); transform-origin: left; transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 0 12px #ffc95e; }
+  #boot #boot-text { font: 11px/1.4 system-ui, sans-serif; letter-spacing: 0.28em; text-transform: uppercase; color: #9a8f7a; min-height: 1.4em; }
+  @keyframes bspin { to { transform: rotate(360deg); } }
+  @keyframes bpulse { 50% { opacity: 0.45; transform: scale(0.92); } }
+  @media (prefers-reduced-motion: reduce) { #boot .b-spin, #boot .b-glow { animation: none; } }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+</style>
 </head>
 <body>
 <canvas id="stage"></canvas>
+<div id="ui"></div>
 
-<div id="title" class="overlay">
-  <div class="t-inner">
-    <p class="t-kicker">LitVM Games presents</p>
-    <h1>Rapture <span>Chess</span></h1>
-    <p class="t-lede">The fifty champions of Rapture ARC 1 take the board. Alliance holds the ivory, Horde the obsidian: Gods on the thrones, Titans in the towers, Kings and Demigods at their sides, Mortals on the line.</p>
-    <p id="title-holdings" class="t-fine">Connect a Liteforge wallet to field the champions you hold.</p>
-    <div class="t-options">
-      <label>Realm
-        <select id="realm"><option value="auto">By side</option><option value="valhalla">Valhalla</option><option value="underworld">Underworld</option></select>
-      </label>
-      <label>Quality
-        <select id="quality-title"><option value="auto">Auto (60 fps)</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option></select>
-      </label>
+<div id="boot" role="progressbar" aria-label="Loading Rapture Chess">
+  <div class="b-in">
+    <div class="b-emb">
+      <div class="b-glow"></div>
+      <svg class="b-spin" viewBox="0 0 120 120" fill="none" stroke="currentColor"><circle cx="60" cy="60" r="57" stroke-width="1" stroke-dasharray="2 6" /><path d="M60 1v12M60 107v12M1 60h12M107 60h12" stroke-width="2" /></svg>
+      <svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-linejoin="round"><circle cx="60" cy="60" r="47" stroke-width="2.2" /><path d="M60 22 88 60 60 98 32 60z" stroke-width="2.2" fill="currentColor" fill-opacity=".08" /><path d="M47 75h26M50 70l-2-15 7 5 5-11 5 11 7-5-2 15z" stroke-width="2.4" fill="currentColor" fill-opacity=".2" /></svg>
     </div>
-    <div class="t-actions">
-      <button id="play-alliance" class="btn primary">Play as Alliance</button>
-      <button id="play-horde" class="btn">Play as Horde</button>
-      <button id="wallet-title" class="btn ghost">Connect wallet</button>
-    </div>
-    <div id="wager-title" class="wager-slot"></div>
-    <p class="t-fine made">Built with <a href="https://github.com/strodanodev/deckwright" rel="noopener">Deckwright</a> · three.js · Rapture ARC 1 on LitVM Liteforge</p>
-  </div>
-</div>
-
-<div id="loading" class="overlay" hidden>
-  <div class="l-inner">
-    <p id="loading-text">Summoning champions…</p>
-    <div class="l-track"><div id="loading-bar" class="l-bar"></div></div>
-  </div>
-</div>
-
-<div id="hud" hidden>
-  <header class="top">
-    <div class="brand">Rapture <span>Chess</span></div>
-    <div id="turn" data-side="0">Your move</div>
-    <div id="status" class="status"></div>
-    <div id="clock" class="clock" hidden></div>
-  </header>
-
-  <aside id="card" class="card" hidden>
-    <img id="card-art" alt="" />
-    <div class="c-body">
-      <div class="c-head"><h2 id="card-name"></h2><span id="card-held" class="held" hidden>Held</span></div>
-      <p id="card-epithet" class="epithet"></p>
-      <p id="card-role" class="role"></p>
-      <div id="card-stats" class="stats"></div>
-      <p id="card-power" class="fine"></p>
-    </div>
-  </aside>
-
-  <aside class="side">
-    <div class="fallen"><span class="label">Fallen · Alliance</span><div id="fallen-alliance" class="strip"></div></div>
-    <div class="fallen"><span class="label">Fallen · Horde</span><div id="fallen-horde" class="strip"></div></div>
-    <div id="moves" class="moves"></div>
-    <div id="wager-hud" class="wager-slot"></div>
-  </aside>
-
-  <div id="promo" class="promo" hidden>
-    <span>Ascend as</span>
-    <button data-piece="q">Queen</button><button data-piece="r">Rook</button><button data-piece="b">Bishop</button><button data-piece="n">Knight</button>
-  </div>
-
-  <footer class="bottom">
-    <button id="btn-new" class="btn small">New game</button>
-    <button id="btn-flip" class="btn small">Flip view</button>
-    <button id="btn-concede" class="btn small danger">Concede</button>
-    <button id="wallet" class="btn small ghost">Connect wallet</button>
-    <select id="quality" class="btn small" title="Render quality"><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option></select>
-    <span id="fps" class="fps" title="Frames per second"></span>
-  </footer>
-  <div id="toast" class="toast"></div>
-</div>
-
-<div id="over" class="overlay" hidden>
-  <div class="t-inner">
-    <h1 id="over-title">Checkmate</h1>
-    <p id="over-detail" class="t-lede"></p>
-    <div class="t-actions"><button id="btn-again" class="btn primary">Play again</button></div>
+    <h1>Rapture<span>Chess</span></h1>
+    <div class="b-track"><div id="boot-bar"></div></div>
+    <p id="boot-text">Lighting the braziers</p>
   </div>
 </div>
 
