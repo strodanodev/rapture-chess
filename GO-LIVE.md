@@ -200,3 +200,7 @@ npm run host -- verify
 - `/titles` on the chess node: `rapture-chess.v1` owner 0x729a…f626, `publisherHosts: 1`, `bondedHosts: 4`, **`published: true`**.
   The arcade lists the title while this node is up and bonded. Keep the node running (launcher + schtasks for logon).
 - Top up the announcer when the node logs `gas-low` (each hosted ranked match costs it ~445k gas; witnessing ~77k).
+- Logon task `litnode-chess` (Task Scheduler, current user, at logon) runs `C:\litvm\rapture-chess\start-chess-node.ps1`,
+  which clears the Control Plane's variables and starts the supervised node. Remove with
+  `Unregister-ScheduledTask -TaskName litnode-chess`. `host status` still says "service not installed" because it only
+  looks for its own task name; the logon task is what keeps the node up.
