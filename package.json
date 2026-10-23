@@ -1,0 +1,27 @@
+{
+  "name": "rapture-chess",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rapture Chess: a 3D Web3 chess game built with Deckwright, three.js and the Rapture ARC 1 collection on LitVM Liteforge.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4174",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "pieces": "node scripts/build-pieces.mjs",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chess.js": "1.4.0",
+    "deckwright": "github:strodanodev/deckwright",
+    "n8ao": "2.0.1",
+    "postprocessing": "6.39.5",
+    "three": "0.186.1",
+    "three.quarks": "0.17.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}
