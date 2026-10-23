@@ -193,3 +193,10 @@ Remove-Item Env:OPERATOR_KEY
 npm run host -- publish
 npm run host -- verify
 ```
+
+## Live (2026-10-24)
+
+- Announcer `0xf41c…d2d2f` delegated (tx 0xffaf740a…) and funded 0.02 zkLTC (tx 0x2749dbee…).
+- `/titles` on the chess node: `rapture-chess.v1` owner 0x729a…f626, `publisherHosts: 1`, `bondedHosts: 4`, **`published: true`**.
+  The arcade lists the title while this node is up and bonded. Keep the node running (launcher + schtasks for logon).
+- Top up the announcer when the node logs `gas-low` (each hosted ranked match costs it ~445k gas; witnessing ~77k).
