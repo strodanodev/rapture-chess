@@ -173,3 +173,23 @@ npm run host -- publish
 Remove-Item Env:OPERATOR_KEY
 npm run host -- verify
 ```
+
+## Bonded (2026-10-24); announce still to do
+
+- `bond` landed: 1 tLITVM behind node a0b440f4… for operator 0x729a…f626, active (tx 0xf63af3a2…).
+- The node's self-update replaced the git checkout with the 0.12.1 *portable* release, which ships no `tools/set-announcer.mjs`,
+  so `announce` failed. The checkout was reset to `origin/master` (0.12.1 source, all tools) and `LITNODE_NO_UPDATE=1`
+  was added to `C:\litvm\rapture-chess\node.env` so the hourly update check stays off. Update by `git pull` + restart instead.
+
+Re-run the announce (delegates and funds the node's gas key `0xf41c…d2d2f`; the key stays in the shell):
+
+```powershell
+cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
+Remove-Item Env:GAUNTLETS, Env:GAUNTLET_GATEWAY_PORT, Env:RELAY_PORT, Env:RULESETS, Env:SERVICES, Env:COURTS -ErrorAction SilentlyContinue
+$env:LITNODE_HOME = "C:/litvm/rapture-chess"
+$env:OPERATOR_KEY = "0x<publisher private key>"
+npm run host -- announce --fund 0.02
+Remove-Item Env:OPERATOR_KEY
+npm run host -- publish
+npm run host -- verify
+```
