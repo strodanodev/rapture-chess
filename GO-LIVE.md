@@ -33,6 +33,12 @@ re-bonded from `0x729a…f626`). Until then, two nodes.
 
 Both nodes are bonded under different wallets, so they count as different operators for witnessing each other.
 
+Ports on this laptop: the chess gauntlet spawns match servers on 7860-7879 (Agent Fighter uses 7820-7859 and Pickle Brawl
+its own range on the Control Plane node), gateways 8478 and 8488, nodes 7801 and 7811.
+
+Escrow caveat: `LitNodeWager.claim` requires the host that signed the delta to be actively bonded at claim time, and
+`unstake` deactivates a bond immediately. Claim pots before ever unbonding the chess node.
+
 ## Day to day
 
 ```powershell
