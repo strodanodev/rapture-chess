@@ -11,7 +11,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
-  BloomEffect, ChromaticAberrationEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, VignetteEffect, BlendFunction, KernelSize, ToneMappingEffect, ToneMappingMode,
+  BloomEffect, ChromaticAberrationEffect, ClearPass, HueSaturationEffect, NoiseEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, VignetteEffect, BlendFunction, KernelSize, ToneMappingEffect, ToneMappingMode,
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
 import { tweens } from './tween';
@@ -53,6 +53,7 @@ export class Stage {
   private bloom: BloomEffect;
   private ao: N8AOPostPass | null = null;
   private smaa: SMAAEffect;
+  private grain: NoiseEffect;
   /** Set false while assets load: those frames say nothing about the game's frame rate. */
   governing = true;
   /** An opaque menu covers the canvas: skip drawing (the clocks and tweens keep running). */
@@ -134,13 +135,22 @@ export class Stage {
       this.ao.configuration.halfRes = true;
       this.composer.addPass(this.ao);
     } catch (e) { console.warn('[chess] N8AO unavailable', e); }
-    this.bloom = new BloomEffect({ blendFunction: BlendFunction.ADD, mipmapBlur: true, luminanceThreshold: 1.0, luminanceSmoothing: 0.3, intensity: 1.0, radius: 0.65, kernelSize: KernelSize.LARGE });
-    this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0009, 0.0009), radialModulation: true, modulationOffset: 0.35 });
-    const vignette = new VignetteEffect({ eskil: false, offset: 0.28, darkness: 0.62 });
+    // bloom only on what is really hot (fire, runes, lava, glints): a higher threshold keeps gold and marble crisp
+    this.bloom = new BloomEffect({ blendFunction: BlendFunction.ADD, mipmapBlur: true, luminanceThreshold: 1.05, luminanceSmoothing: 0.25, intensity: 0.8, radius: 0.6, kernelSize: KernelSize.LARGE });
+    this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0007, 0.0007), radialModulation: true, modulationOffset: 0.4 });
+    const vignette = new VignetteEffect({ eskil: false, offset: 0.3, darkness: 0.68 });
     this.composer.addPass(new EffectPass(this.camera, this.bloom, this.chroma, vignette));
-    // the last pass is the one that draws to the screen, so it is never disabled: SMAA is skipped inside it instead
+    // the grade, all merged into the one final pass (no extra render targets): AgX keeps bright gold and fire in colour
+    // where ACES burned them to white, a little saturation back, and a faint film grain. (BrightnessContrastEffect is
+    // left out on purpose: in this chain it lifted the dark sky into grey blotches.) The last pass
+    // is the one that draws to the screen, so it is never disabled: SMAA and the grain are skipped inside it instead.
     this.smaa = new SMAAEffect({ preset: SMAAPreset.MEDIUM });
-    this.composer.addPass(new EffectPass(this.camera, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }), this.smaa));
+    this.grain = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
+    this.grain.blendMode.opacity.value = 0.045;
+    this.composer.addPass(new EffectPass(this.camera,
+      new ToneMappingEffect({ mode: ToneMappingMode.AGX }),
+      new HueSaturationEffect({ saturation: 0.14 }),
+      this.grain, this.smaa));
 
     const saved = localStorage.getItem('rapture-chess.quality') as Quality | 'auto' | null;
     this.auto = !saved || saved === 'auto';
@@ -158,6 +168,7 @@ export class Stage {
     this.smaa.blendMode.setBlendFunction(p.smaa ? BlendFunction.NORMAL : BlendFunction.SKIP);
     this.bloom.kernelSize = p.bloomKernel;
     this.chroma.blendMode.setBlendFunction(p.chroma ? BlendFunction.NORMAL : BlendFunction.SKIP);
+    this.grain.blendMode.setBlendFunction(p.chroma ? BlendFunction.OVERLAY : BlendFunction.SKIP);
     this.keyLight.castShadow = p.shadow > 0;
     if (p.shadow && this.keyLight.shadow.mapSize.x !== p.shadow) {
       this.keyLight.shadow.mapSize.set(p.shadow, p.shadow);
@@ -177,18 +188,29 @@ export class Stage {
   }
   onQuality(fn: (q: Quality, fps: number) => void): void { this.qualityListeners.push(fn); }
 
+  private mirrorSize = 0;
+  private floorRadius = 9.05;
+  /** The realm's polished dais round the board: the mirror (high presets) or the plain plate fills this circle; 0 = none. */
+  setFloorRadius(r: number): void {
+    if (r === this.floorRadius) return;
+    this.floorRadius = r;
+    if (r) { this.floorPlate.geometry.dispose(); this.floorPlate.geometry = new THREE.CircleGeometry(r, 64); }
+    this.setMirror(this.mirrorSize);
+  }
   private setMirror(size: number): void {
+    this.mirrorSize = size;
     if (this.mirror) { this.scene.remove(this.mirror); this.mirror.dispose(); this.mirror = null; }
+    if (!this.floorRadius) { this.floorPlate.visible = false; return; }
     if (!size) { this.floorPlate.visible = true; return; }
     this.floorPlate.visible = false;
-    this.mirror = new Reflector(new THREE.PlaneGeometry(70, 70), { textureWidth: size, textureHeight: size, color: 0x1a1a22, clipBias: 0.003 });
+    this.mirror = new Reflector(new THREE.CircleGeometry(this.floorRadius, 64), { textureWidth: size, textureHeight: size, color: 0x1a1a22, clipBias: 0.003 });
     this.mirror.rotation.x = -Math.PI / 2;
     this.mirror.position.y = -0.165;
     this.scene.add(this.mirror);
   }
   /** The plain floor shown when the mirror is off. */
   private readonly floorPlate = (() => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.62, metalness: 0.35, envMapIntensity: 0.18 }));
+    const m = new THREE.Mesh(new THREE.CircleGeometry(9.05, 64), new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.62, metalness: 0.35, envMapIntensity: 0.18 }));
     m.rotation.x = -Math.PI / 2;
     m.position.y = -0.165;
     m.receiveShadow = true;
@@ -270,7 +292,11 @@ export class Stage {
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     // portrait phones: open the vertical field of view so the whole board still fits across the screen
-    this.camera.fov = this.camera.aspect < 1 ? Math.min(74, 40 / this.camera.aspect) : 40;
+    this.camera.fov = this.camera.aspect < 1 ? Math.min(74, 40 / this.camera.aspect) : this.attract ? 48 : 40;
+    // the menu on a wide screen: slide the picture right so the board stands clear of the menu column
+    const shift = this.attract && this.camera.aspect > 1.25 ? Math.round(w * 0.12) : 0;
+    if (shift) this.camera.setViewOffset(w, h, -shift, 0, w, h);
+    else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
 
@@ -300,19 +326,36 @@ export class Stage {
     });
   }
 
+  /** Draw `scene` over the arena, after ambient occlusion and before bloom: its own depth, the same camera. Returns a
+   *  switch for it (the menu title is the only user). */
+  overlay(scene: THREE.Scene): (on: boolean) => void {
+    const clear = new ClearPass(false, true, false);
+    const pass = new RenderPass(scene, this.camera);
+    pass.clearPass.enabled = false;
+    pass.ignoreBackground = true;
+    const at = this.ao ? 2 : 1;
+    this.composer.addPass(clear, at);
+    this.composer.addPass(pass, at + 1);
+    return (on) => { clear.enabled = on; pass.enabled = on; };
+  }
+
   /** A short camera tremor (a capture lands). */
   shake(amplitude = 0.06, seconds = 0.28): void { this.shakeAmp = amplitude; this.shakeLeft = seconds; }
 
   /** The menu camera: a slow, high circle around the board. */
   private orbit(dt: number): void {
     this.attractAngle += dt * 0.06;
-    const r = 15.5, a = this.attractAngle;
-    this.camera.position.set(Math.sin(a) * r, 6.4 + Math.sin(a * 0.7) * 0.8, Math.cos(a) * r);
+    // inside both arenas' rings (Valhalla's pillars stand at 15.2 m, the Underworld's spires from 16 m), above the
+    // runestones, totems and crystals (under 3.2 m) and below the stalactites
+    const r = 12.6, a = this.attractAngle;
+    const y = (this.camera.aspect > 1.25 ? 8.2 : 6.2) + Math.sin(a * 0.7) * 0.7;
+    this.camera.position.set(Math.sin(a) * r, y, Math.cos(a) * r);
     this.camera.lookAt(this.controls.target);
   }
   setAttract(on: boolean): void {
     this.attract = on;
     this.controls.enabled = !on;
+    this.resize();
     if (on) this.attractAngle = Math.atan2(this.camera.position.x, this.camera.position.z);
   }
 

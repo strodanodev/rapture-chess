@@ -22,6 +22,8 @@ import { Army, PieceView } from './scene/pieces';
 import { VFX } from './scene/vfx';
 import { Realm, REALM_NAME, type RealmId } from './scene/realm';
 import { loadSet, preloadAvatars } from './scene/assets';
+import { Title3D } from './scene/title';
+import { MATES } from './scene/mates';
 import { Hud, type Fallen } from './ui/hud';
 import { LocalMatch, type Match, type MatchEvents } from './game/session';
 import { RelayMatch } from './game/relay';
@@ -118,7 +120,8 @@ function openRanked(): void {
   const m = modal('Ranked on LitNode', body);
 }
 
-register(homeScreen(app));
+const home = homeScreen(app);
+register(home);
 register(playScreen(app));
 register(armoryScreen(app));
 register(shopScreen(app));
@@ -129,6 +132,7 @@ register(versus);
 register(hud.screen());
 onScreen((s) => {
   if (!stage) return;
+  showTitle(s.id === 'home');
   stage.paused = !!s.opaque;
   const menu = s.id !== 'match' && s.id !== 'versus';
   if (menu && !stage.attract) stage.setAttract(true);
@@ -183,15 +187,75 @@ async function ensureStage(): Promise<void> {
   }
 }
 
-/** The main-menu tableau: the four god-monarchs face each other across the empty board. */
-async function tableau(): Promise<void> {
+// ------------------------------------------------------------------ the menu: 3D title and the checkmate gallery
+let title: Title3D | null = null;
+let titleOverlay: ((on: boolean) => void) | null = null;
+/** Fit the 3D title over the menu's logo slot (CSS decides where that is on every screen size). */
+function placeTitle(): void {
+  if (!title || !stage) return;
+  const slot = document.querySelector<HTMLElement>('.home:not([hidden]) .logo-word');
+  title.place(slot?.getBoundingClientRect() ?? null, stage.camera, { width: innerWidth, height: innerHeight });
+}
+function showTitle(on: boolean): void {
+  if (!title) return;
+  title.show(on);
+  titleOverlay?.(on);
+  if (on) { requestAnimationFrame(placeTitle); setTimeout(placeTitle, 600); }
+}
+addEventListener('resize', () => setTimeout(placeTitle, 50));
+
+/** The board behind the menu re-enacts a famous checkmate: the final position of the game, the mating move marked,
+ *  the mated god-king in check. Each side fields one champion per piece type, so a position loads a dozen avatars. */
+let mateIndex = Math.floor(Math.random() * MATES.length);
+let mateGen = 0;
+let mateShown: { king: PieceView | undefined; mater: PieceView | undefined } | null = null;
+async function tableau(advance = true): Promise<void> {
+  const my = ++mateGen;
+  if (advance) mateIndex = (mateIndex + 1) % MATES.length;
+  const mate = MATES[mateIndex];
+  const c = new Chess(mate.fen);
+  let last: Move | null = null;
+  if (mate.moves) for (const san of mate.moves.split(' ')) last = c.move(san);
   army!.clear();
   clearSelection();
-  board!.setLastMove(null, null); board!.setCheck(null);
-  const types = new Map<string, PieceType>([['e1', 'k'], ['d1', 'q'], ['e8', 'k'], ['d8', 'q']]);
-  const pick = (side: Side) => { const r = buildRoster(snapshot.cards, side, web3.owned, 'rapture-home'); return new Map([...r].filter(([sq]) => types.has(sq))); };
-  await Promise.all([army!.muster(0, pick(0), types), army!.muster(1, pick(1), types)]);
+  mateShown = null;
+  board!.setLastMove(last?.from ?? null, last?.to ?? null);
+  const champions = [0, 1].map((side) => {
+    const r = buildRoster(snapshot.cards, side as Side, web3.owned, `rapture-mate:${mate.name}`);
+    const at = side === 0 ? { k: 'e1', q: 'd1', r: 'a1', b: 'c1', n: 'b1', p: 'a2' } : { k: 'e8', q: 'd8', r: 'a8', b: 'c8', n: 'b8', p: 'a7' };
+    return (t: PieceType) => r.get(at[t])!;
+  });
+  const rosters: [Map<string, Card>, Map<string, Card>] = [new Map(), new Map()];
+  const types: [Map<string, PieceType>, Map<string, PieceType>] = [new Map(), new Map()];
+  for (const row of c.board()) for (const p of row) {
+    if (!p) continue;
+    const side: Side = p.color === 'w' ? 0 : 1;
+    rosters[side].set(p.square, champions[side](p.type));
+    types[side].set(p.square, p.type);
+  }
+  const kingSq = [...types[c.turn() === 'w' ? 0 : 1]].find(([, t]) => t === 'k')?.[0] ?? null;
+  board!.setCheck(kingSq);
+  home.setMate(mate.name, mate.where, last?.san ?? 'Checkmate');
+  await Promise.all([army!.muster(0, rosters[0], types[0]), army!.muster(1, rosters[1], types[1])]);
+  if (my !== mateGen) return;
+  mateShown = { king: kingSq ? army!.at(kingSq) : undefined, mater: last ? army!.at(last.to) : undefined };
+  mateShown.mater?.setHighlight(true);
+  pulseMate();
 }
+/** The mating champion strikes, the god-king reels, the rune ring of check rises. */
+function pulseMate(): void {
+  if (!mateShown || match || !stage?.attract) return;
+  const { king, mater } = mateShown;
+  mater?.play('attack', 1.2);
+  if (king) { setTimeout(() => king.play('hit', 1), 450); vfx!.check(king.group.position); }
+}
+let mateTick = 0;
+setInterval(() => {
+  if (match || !stage?.attract || document.hidden) return;
+  mateTick++;
+  if (mateTick % 4 === 0) void tableau();
+  else if (mateTick % 4 === 2) pulseMate();
+}, 4000);
 
 // ------------------------------------------------------------------ a game
 let seedCounter = 0;
@@ -211,6 +275,8 @@ async function prepare(side: Side, seed: string, owned: Set<string>, names: [str
   versus.progress(0.04, 'Opening the gates');
   await ensureStage();
   stage!.governing = false;
+  mateGen++; // a gallery position still loading must not land on this board
+  mateShown = null;
   army!.clear();
   fallen[0] = []; fallen[1] = [];
   kills.clear();
@@ -304,7 +370,7 @@ async function leaveMatch(): Promise<void> {
   hud.showResult(null);
   hud.pause(false);
   resetStack();
-  await go('home', { wipe: true, before: async () => { stage?.setAttract(true); await tableau(); } });
+  await go('home', { wipe: true, before: async () => { stage?.setAttract(true); mateTick = 0; await Promise.race([tableau(), new Promise((r) => setTimeout(r, 1500))]); } });
 }
 
 let lastClock = 0;
@@ -495,7 +561,13 @@ await realm!.load(realmFor(prefs.realm, prefs.side));
 vfx!.embers(new THREE.Color(realm!.preset.embers));
 accent(prefs.side);
 boot(0.75, 'Awakening the gods');
-await Promise.all([tableau(), document.fonts.ready]);
+title = new Title3D(stage!.scene.environment);
+titleOverlay = stage!.overlay(title.scene);
+titleOverlay(false);
+stage!.onUpdate((dt, t) => title!.update(dt, t, stage!.camera));
+// the first position streams its champions in behind the menu; the boot only waits for the title and the fonts
+void tableau(false);
+await Promise.all([title.load().then(() => document.documentElement.classList.add('logo3d')).catch((e) => console.warn('[chess] 3D title unavailable', e)), document.fonts.ready]);
 boot(1, 'Ready');
 const bootEl = document.getElementById('boot')!;
 bootEl.classList.add('done');

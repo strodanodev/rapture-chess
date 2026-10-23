@@ -14,7 +14,8 @@
     "test:contracts": "hardhat test",
     "test:relay": "node --test test/relay.test.mjs",
     "test:wager": "node --test test/wager-canonical.test.mjs",
-    "test": "pnpm test:contracts && pnpm test:wager && pnpm test:relay",
+    "test:mates": "node --test test/mates.test.mjs",
+    "test": "pnpm test:contracts && pnpm test:wager && pnpm test:mates && pnpm test:relay",
     "title": "node scripts/build-title.mjs"
   },
   "dependencies": {

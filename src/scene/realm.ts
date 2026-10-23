@@ -20,6 +20,8 @@ interface RealmPreset {
   hemi: { sky: number; ground: number; intensity: number };
   envIntensity: number;
   floor: number;
+  /** The polished dais round the board (the mirror on high presets): its radius, or 0 for none. */
+  floorRadius: number;
   embers: number;
 }
 
@@ -30,7 +32,7 @@ const PRESETS: Record<RealmId, RealmPreset> = {
     key: { color: 0xfff3e0, intensity: 2.4, position: [6, 12, 5] },
     rim: { color: 0x9fd0ff, intensity: 55 },
     hemi: { sky: 0x4a5a8a, ground: 0x1a1410, intensity: 0.6 },
-    envIntensity: 0.6, floor: 0x1a1a22, embers: 0xffd27a,
+    envIntensity: 0.6, floor: 0x1a1a22, floorRadius: 9.05, embers: 0xffd27a,
   },
   underworld: {
     sky: { top: 0x050102, bottom: 0x2a0806, glow: 0x7a1a08, fog: 0x120404, fogDensity: 0.024 },
@@ -38,8 +40,14 @@ const PRESETS: Record<RealmId, RealmPreset> = {
     key: { color: 0xffd0b0, intensity: 1.8, position: [-5, 10, -6] },
     rim: { color: 0xff5a2a, intensity: 70 },
     hemi: { sky: 0x4a1a10, ground: 0x200404, intensity: 0.7 },
-    envIntensity: 0.5, floor: 0x120606, embers: 0xff6a2a,
+    envIntensity: 0.5, floor: 0x120606, floorRadius: 0, embers: 0xff6a2a,
   },
+};
+
+/** Multipliers on the textured materials: the photo-real stone would otherwise outshine the champions. */
+const TINT: Record<string, number> = {
+  vh_stone: 0x8e887c, vh_floor: 0x8a8274, vh_blocks: 0x6e675e,
+  uw_basalt: 0x3e3236, uw_rock: 0x4e3e3a, uw_ash: 0x5e4e46,
 };
 
 export class Realm {
@@ -69,6 +77,7 @@ export class Realm {
     this.stage.hemi.groundColor.set(p.hemi.ground);
     this.stage.hemi.intensity = p.hemi.intensity;
     this.stage.scene.environmentIntensity = p.envIntensity;
+    this.stage.setFloorRadius(p.floorRadius);
     const gltf = await loadModel(`${id}.glb`).catch((e) => { console.warn('[chess] realm failed', id, e); return null as GLTF | null; });
     if (!gltf || this.id !== id) return;
     this.dress(gltf.scene, id);
@@ -101,6 +110,21 @@ export class Realm {
       return m;
     }
     if (/rune/.test(n)) { const m = src.clone(); m.emissiveIntensity = 2.2; m.color.set(0x05050a); return m; }
+    // Poly Haven stone, ground and rock (scripts/build-arenas.py): keep the maps, darken them to the realm's mood
+    if (src.map) {
+      const m = src.clone();
+      m.color.set(TINT[n] ?? 0x8a8478);
+      // matte stone: keep the colour and normal maps for detail, drop the ARM map (read as roughness/metalness it gave
+      // glossy patches that the realm's strong rim spot blew out to white, and in the dais mirror too)
+      m.metalnessMap = null;
+      m.roughnessMap = null;
+      m.metalness = 0;
+      m.roughness = 0.9;
+      m.envMapIntensity = 0.25;
+      return m;
+    }
+    if (/crystal/.test(n)) { const m = src.clone(); m.emissiveIntensity = 2.6; return m; }
+    if (/banner/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x14284a, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
     if (/gold/.test(n)) return new THREE.MeshStandardMaterial({ color: 0xffbf5e, roughness: 0.3, metalness: 1, envMapIntensity: 1.2 });
     if (/obsidian/.test(n)) return new THREE.MeshPhysicalMaterial({ color: 0x0a070c, roughness: 0.2, metalness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 1.0 });
     if (/bone/.test(n)) return new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: 0.75, metalness: 0 });

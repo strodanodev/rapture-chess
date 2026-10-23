@@ -99,8 +99,14 @@ export class PieceView {
     const root = this.avatar!;
     root.scale.setScalar(1);
     root.position.set(0, 0, 0);
+    // measure in the avatar's own space: detached, its world matrix is its local one. (Measured in place, the box
+    // carried the square's world position, and avatars that finished loading after their piece stood on the board
+    // were thrown off their plinths by that much.)
+    const parent = root.parent;
+    parent?.remove(root);
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root, true), size = box.getSize(new THREE.Vector3());
+    parent?.add(root);
     const s = PIECE_HEIGHT[this.type] / (size.y || 1);
     root.scale.setScalar(s);
     root.position.set(-(box.min.x + size.x / 2) * s, PLINTH_TOP[this.type] - box.min.y * s, -(box.min.z + size.z / 2) * s);

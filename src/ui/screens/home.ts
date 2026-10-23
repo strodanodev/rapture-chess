@@ -8,7 +8,7 @@ import { record } from '../prefs';
 import { go, type Screen } from '../router';
 import { walletChip } from '../widgets';
 
-export function homeScreen(app: App): Screen {
+export function homeScreen(app: App): Screen & { setMate(name: string, where: string, san: string): void } {
   const menuItem = (ico: IconName, title: string, sub: () => string, onClick: () => void) => {
     const s = h('span', { class: 's' });
     const b = h('button', { class: 'menu-item', on: { click: onClick } },
@@ -50,17 +50,27 @@ export function homeScreen(app: App): Screen {
     h('h1', { class: 'logo-word' }, h('span', { class: 'gilded', text: 'Rapture' }), h('span', { class: 'logo-sub', text: 'Chess' })),
     h('p', { class: 'tagline', text: 'Fifty champions of Rapture ARC 1. One board. Settled on LitNode.' }));
 
+  // the plaque naming the checkmate re-enacted on the board behind the menu
+  const mateName = h('b', { class: 'display' });
+  const mateWhere = h('span');
+  const mateSan = h('span', { class: 'mp-san tabnum' });
+  const plaque = h('div', { class: 'mate-plaque', aria: { live: 'polite' } }, h('span', { class: 'eyebrow', text: 'On the board' }), mateName, mateWhere, mateSan);
+
   const el = h('section', { class: 'home', aria: { label: 'Main menu' } },
     h('div', { class: 'home-scrim' }),
     embers(18, ['#ffc95e', '#ff7438', '#ffe2a0']),
     h('header', { class: 'home-top' }, h('span', { class: 'badge outline live', text: 'Season 0 · Liteforge' }), walletChip(app)),
-    h('div', { class: 'home-main' }, logo, menu),
+    h('div', { class: 'home-main' }, logo, plaque, menu),
     feature,
     h('footer', { class: 'home-foot' }, h('span', { text: 'Built with Deckwright · three.js · LitNode' })));
 
   app.web3.onChange(() => { for (const i of items) i.refresh(); });
   return {
     id: 'home', el,
+    setMate(name, where, san) {
+      mateName.textContent = name; mateWhere.textContent = where; mateSan.textContent = san;
+      plaque.classList.remove('swap'); void plaque.offsetWidth; plaque.classList.add('swap');
+    },
     enter() {
       for (const i of items) i.refresh();
       stagger(menu, 260);
