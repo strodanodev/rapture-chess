@@ -151,3 +151,25 @@ npm run host -- verify
 
 For start-at-logon, `install-service` would inherit the clashing user variables; use a small launcher script that
 clears them first (as above) and register that with schtasks instead. Not yet done.
+
+## Dedicated node: running (2026-10-24)
+
+- Home `C:\litvm\rapture-chess` (node.env, litnode.log); code `LITNODE\litnode` (0.12.0, protocol 4); data in `LITNODE\litnode\data\rapture-chess`.
+- nodeId `a0b440f4c88fcda3dd8b5783cf23f06d16d408b162de24bf82aa5fad298e1175`, announcer `0xf41c9b338b8918a93cb22ef3957b28d4a4d42d2f`.
+- Port 7811, gauntlet gateway 8488 (chess only), quick tunnel advertised as wsAddr. `/titles` lists rapture-chess.v1 with owner 0x729a…f626.
+- Launcher: `C:\litvm\rapture-chess\start-chess-node.ps1` (`-Stop`, `-Status`); it clears the Control Plane's GAUNTLETS/ports/SERVICES
+  variables before starting. For start at logon register that script with schtasks (command in the script header).
+
+Bond and publish it from the publisher wallet (1 tLITVM on testnet; the key stays in the shell):
+
+```powershell
+cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
+Remove-Item Env:GAUNTLETS, Env:GAUNTLET_GATEWAY_PORT, Env:RELAY_PORT, Env:RULESETS, Env:SERVICES, Env:COURTS -ErrorAction SilentlyContinue
+$env:LITNODE_HOME = "C:/litvm/rapture-chess"
+$env:OPERATOR_KEY = "0x<publisher private key>"
+npm run host -- bond
+npm run host -- announce --fund 0.02
+npm run host -- publish
+Remove-Item Env:OPERATOR_KEY
+npm run host -- verify
+```
