@@ -109,3 +109,45 @@ runs `node node_modules/tsx/dist/cli.mjs relay/server.mts` from it for every mat
   matches settle as casual, which the escrow still honours through the host node's signature.
 - A player stakes zkLTC against their arcade player key in the game's wager panel. After a match between two staked
   keys settles, the panel fetches the node's delta and submits the claim; the winner receives the pot.
+
+## Step 3, revised (2026-10-23): the Control Plane node cannot load the title
+
+Verified in the Control Plane app's code: `writeNodeEnvironment` hard-codes
+`RULESETS=./rulesets/agent-fighter.v1.js,./rulesets/pickle-brawl.v1.js` into `node.env` on every start, and
+`start-node.cmd` sets every `node.env` line over the inherited environment, so a user `RULESETS` variable is ignored
+there. (`GAUNTLETS` passes through only because node.env has no such line.) That node is also on the 0.11 line
+(protocol 3), bonded by `0x8697…87b5`, not by the title's publisher `0x729a…f626`.
+
+The plug-and-play path is a dedicated node from the public 0.12 checkout, bonded from the publisher wallet:
+
+```powershell
+cd "C:\Users\strodano\Documents\LitVM Games\LITNODE\litnode"
+npm run host -- init --operator rapture-chess --roles mesh,host,witness,settler --port 7811 --region ap-southeast --tunnel quick --rulesets "C:/Users/strodano/Documents/LitVM Games/CHESS/rulesets/rapture-chess.v1.js" --home "C:/litvm/rapture-chess"
+Add-Content "C:/litvm/rapture-chess/node.env" "GAUNTLETS=rapture-chess.v1=C:/Users/strodano/Documents/LitVM Games/CHESS/gauntlets/rapture-chess.json`nGAUNTLET_GATEWAY_PORT=8488"
+```
+
+Caveat: the 0.12 supervisor lets the process environment win over node.env for known keys, and your user environment
+carries `GAUNTLETS`, `GAUNTLET_GATEWAY_PORT=8478` and `RELAY_PORT=8477` for the Control Plane node. Start the chess
+node from a shell that clears them, so it keeps its own values and does not fight over port 8478:
+
+```powershell
+Remove-Item Env:GAUNTLETS, Env:GAUNTLET_GATEWAY_PORT, Env:RELAY_PORT, Env:RULESETS -ErrorAction SilentlyContinue
+$env:LITNODE_HOME = "C:/litvm/rapture-chess"
+npm run host -- doctor
+npm run host -- start --detach
+curl.exe -s http://127.0.0.1:7811/titles
+```
+
+Then bond and publish it from the publisher wallet (1 tLITVM on testnet, faucet in the cabinet), key in the shell only:
+
+```powershell
+$env:OPERATOR_KEY = "0x<publisher private key>"
+npm run host -- bond
+npm run host -- announce --fund 0.02
+npm run host -- publish
+Remove-Item Env:OPERATOR_KEY
+npm run host -- verify
+```
+
+For start-at-logon, `install-service` would inherit the clashing user variables; use a small launcher script that
+clears them first (as above) and register that with schtasks instead. Not yet done.
