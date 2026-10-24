@@ -1,0 +1,76 @@
+/*
+ * The embossed metalwork: buttons, panel frames, medallions, menu tiles and segments drawn with Blender renders of real
+ * bevelled gilt solids (scripts/render-ui.py -> public/ui), stretched as nine-slices. Loaded after theme.css, screens.css
+ * and hud.css, and only replaces how these pieces are drawn, not how they are laid out.
+ *
+ *   btn-*.webp    864 x 230, slice 0 90 (the chamfered tips and their gems); the middle stretches sideways
+ *   plate*.webp   576 x 288, slice 58 on every side (corners and rivets)
+ *   frame.webp    640 x 640, slice 80 (the corner bosses); hollow, the panel shows through
+ *   medallion*    266 x 266, drawn whole
+ */
+
+/* ------------------------------------------------------------------ buttons
+ * --h is the button height; the tips are drawn 0.39h wide on each side (90 / 230 of the image), the clip-path follows
+ * the plate's chamfer (0.3h) so the light sweep and the hit area keep its shape. */
+.btn {
+  --h: 48px; --img: url('/ui/btn-dark.webp'); --ink: var(--gold-1); --emboss: 0 -1px 0 rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 214, 140, 0.18);
+  height: var(--h); min-height: var(--h); padding: 0 calc(var(--h) * 0.08);
+  background: none; border-style: solid; border-color: transparent; border-width: 0 calc(var(--h) * 0.39);
+  border-image: var(--img) 0 90 fill / 0 calc(var(--h) * 0.39) stretch;
+  clip-path: polygon(calc(var(--h) * 0.3) 0, calc(100% - var(--h) * 0.3) 0, 100% 50%, calc(100% - var(--h) * 0.3) 100%, calc(var(--h) * 0.3) 100%, 0 50%);
+  color: var(--ink); text-shadow: var(--emboss);
+}
+.btn::before { display: none; }
+.btn::after { z-index: 0; mix-blend-mode: screen; background: linear-gradient(105deg, transparent 38%, rgba(255, 240, 205, 0.32) 50%, transparent 62%); }
+.btn > * { position: relative; z-index: 1; }
+.btn svg { filter: drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.7)); }
+.btn.primary { --img: url('/ui/btn-gold.webp'); --ink: #2b1602; --emboss: 0 1px 0 rgba(255, 236, 190, 0.7), 0 -1px 0 rgba(90, 45, 0, 0.35); text-shadow: var(--emboss); }
+.btn.primary svg { filter: drop-shadow(0 1px 0 rgba(255, 236, 190, 0.6)); }
+.btn.primary { filter: brightness(1.2) saturate(1.08); }
+.btn.primary:hover { filter: brightness(1.34) saturate(1.1); }
+.btn.danger { --img: url('/ui/btn-crimson.webp'); --ink: #ffe1cc; }
+.btn.ghost { --img: url('/ui/btn-dark.webp'); filter: saturate(0.75) brightness(0.88); }
+.btn.ghost:hover { filter: saturate(0.9) brightness(1.05); }
+.btn.lg { --h: 58px; }
+.btn.sm { --h: 40px; font-size: 11px; padding: 0 2px; }
+.play-btn { --h: 66px; }
+.btn:disabled { filter: grayscale(0.85) brightness(0.55); }
+
+/* ------------------------------------------------------------------ medallions (the round icon buttons) */
+.icon-btn { border: 0; background: url('/ui/medallion.webp') center / 100% 100% no-repeat; box-shadow: none; color: var(--gold-1);
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.65)); }
+.icon-btn svg { filter: drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.8)) drop-shadow(0 1px 0 rgba(255, 214, 140, 0.25)); }
+.icon-btn:hover { color: var(--gold-0); filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 10px rgba(255, 190, 80, 0.45)); }
+.icon-btn.on { background-image: url('/ui/medallion-gold.webp'); color: #2b1602; }
+.icon-btn.on svg { filter: drop-shadow(0 1px 0 rgba(255, 236, 190, 0.7)); }
+
+/* ------------------------------------------------------------------ panel frames: a moulded gilt rail, a ruby boss on each corner */
+.panel { border: 1px solid transparent; border-image: url('/ui/frame.webp') 80 / 30px / 12px stretch; }
+.frame::before { display: none; }
+.panel-head { border-bottom: 0; background: linear-gradient(90deg, transparent, rgba(255, 201, 94, 0.08) 20%, rgba(255, 201, 94, 0.08) 80%, transparent) bottom / 100% 1px no-repeat,
+  linear-gradient(180deg, rgba(255, 220, 150, 0.05), transparent); }
+.panel-head h2, .panel-head h3 { text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 214, 140, 0.15), 0 0 18px rgba(255, 190, 80, 0.25); }
+
+/* ------------------------------------------------------------------ plates: menu tiles, segments, tabs */
+.menu-item, .seg button, .tabs button {
+  border-style: solid; border-color: transparent; border-image: url('/ui/plate.webp') 58 fill / 16px stretch; background: none;
+}
+.menu-item { border-width: 14px; padding: 0 6px; border-radius: 0; overflow: visible; }
+.menu-item::before { display: none; }
+.menu-item:hover, .menu-item:focus-visible { border-color: transparent; background: none; filter: brightness(1.15) drop-shadow(0 0 10px rgba(255, 190, 80, 0.3)); }
+.menu-item .mi-ico { border: 0; background: url('/ui/medallion.webp') center / 100% 100% no-repeat; }
+.mi-text .t { text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 214, 140, 0.15); }
+.seg button { border-width: 10px; border-image-width: 12px; padding: 0 2px; }
+.seg button.on, .tabs button.on { border-image-source: url('/ui/plate-gold.webp'); background: none; box-shadow: none; color: #2b1602; text-shadow: 0 1px 0 rgba(255, 236, 190, 0.6); }
+.seg button:hover:not(.on) { border-color: transparent; filter: brightness(1.2); }
+.tabs { border: 0; background: none; padding: 0; gap: 6px; }
+.tabs button { border-width: 12px; border-image-width: 14px; }
+@media (max-width: 760px), (max-height: 520px) and (max-width: 1000px) {
+  .menu-item { border-width: 12px; border-image-width: 14px; padding: 4px 2px; min-height: 84px; }
+}
+
+/* ------------------------------------------------------------------ the title's fire and lightning (src/ui/titlefx.ts) */
+.title-fx { position: absolute; left: -9%; right: -9%; top: -62%; bottom: -16%; width: 118%; height: 178%; pointer-events: none; z-index: 2; }
+.title-art.fx-on .title-sparks { display: none; }
+.title-art .title-img { transition: filter 0.35s ease-out; }
+.title-art.zap .title-img { transition: none; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 16px rgba(140, 190, 255, 0.85)) brightness(1.3); }

@@ -12,6 +12,7 @@
 import './ui/theme.css';
 import './ui/screens.css';
 import './ui/hud.css';
+import './ui/metal.css';
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
 import type { Move } from 'chess.js';

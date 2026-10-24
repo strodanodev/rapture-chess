@@ -4,7 +4,8 @@ import type { App } from '../app';
 import { championCard, ROLE_OF } from '../cardview';
 import { embers, h, icon, stagger } from '../dom';
 import type { IconName } from '../icons';
-import { record } from '../prefs';
+import { onPrefs, prefs, record } from '../prefs';
+import { TitleFX } from '../titlefx';
 import { go, type Screen } from '../router';
 import { emblem, gvtMark, titleArt } from '../brand';
 import { walletChip } from '../widgets';
@@ -45,10 +46,25 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
     featureCap.replaceChildren(h('p', { class: 'epithet', text: c.epithet }), h('p', { class: 'kicker', text: `${c.element} · ${ROLE_OF[c.kind]}` }));
   };
 
+  // the title, with fire and lightning playing over it (its own small three.js canvas; off with reduced motion)
+  const title = titleArt();
+  const titleImg = title.querySelector<HTMLImageElement>('.title-img')!;
+  let fx: TitleFX | null = null;
+  const runFx = (on: boolean) => {
+    if (on && !prefs.still) {
+      fx ??= new TitleFX(title, titleImg);
+      if (import.meta.env.DEV) (window as unknown as { titleFx: TitleFX }).titleFx = fx;
+      title.classList.add('fx-on');
+      fx.start();
+    }
+    else { fx?.stop(); title.classList.remove('fx-on'); }
+  };
+  onPrefs(() => { if (!el.hidden) runFx(true); });
+
   const logo = h('div', { class: 'logo' },
     h('div', { class: 'logo-emblem' }, emblem(), h('div', { class: 'logo-ring' })),
     h('p', { class: 'kicker', text: 'LitVM Games presents' }),
-    h('h1', { class: 'logo-word' }, titleArt()),
+    h('h1', { class: 'logo-word' }, title),
     h('p', { class: 'tagline', text: 'Fifty champions of Rapture ARC 1. One board. Settled on LitNode.' }));
 
   // the plaque naming the checkmate re-enacted on the board behind the menu
@@ -76,7 +92,8 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
       for (const i of items) i.refresh();
       stagger(menu, 260);
       if (!timer) { showFeature(); timer = setInterval(showFeature, 7000); }
+      runFx(true);
     },
-    leave() { if (timer) clearInterval(timer); timer = null; },
+    leave() { if (timer) clearInterval(timer); timer = null; runFx(false); },
   };
 }
