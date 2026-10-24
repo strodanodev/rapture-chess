@@ -27,8 +27,8 @@ importers:
         specifier: 6.39.5
         version: 6.39.5(three@0.186.1)
       tessaract:
-        specifier: github:strodanodev/tessaract#v0.9.0
-        version: https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e
+        specifier: github:strodanodev/tessaract#v0.9.1
+        version: https://codeload.github.com/strodanodev/tessaract/tar.gz/eaced0dea1f9a3bad2c6938c638462c90bdd8e13
       three:
         specifier: 0.186.1
         version: 0.186.1
@@ -1252,9 +1252,9 @@ packages:
     resolution: {integrity: sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==}
     engines: {node: '>=10'}
 
-  tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e:
-    resolution: {gitHosted: true, integrity: sha512-zhVO1ra6Bd4WLU/Ha41rdjrZgFtGvzn1CSPf9uPekVsWqLE7TVveUhlbb5eZy2qLGX3nWj4vFmJzye5694nYnQ==, tarball: https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e}
-    version: 0.9.0
+  tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/eaced0dea1f9a3bad2c6938c638462c90bdd8e13:
+    resolution: {gitHosted: true, integrity: sha512-SwkgyehdeHLakWNyp8TAuXZxLx7/PpGX1mdOc9SwJ4GTgFVCSKuuw4xVYa63fTHM2b2uS33XssoBTWcuLfHgDQ==, tarball: https://codeload.github.com/strodanodev/tessaract/tar.gz/eaced0dea1f9a3bad2c6938c638462c90bdd8e13}
+    version: 0.9.1
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2610,7 +2610,7 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
-  tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e:
+  tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/eaced0dea1f9a3bad2c6938c638462c90bdd8e13:
     dependencies:
       esbuild: 0.28.1
 
