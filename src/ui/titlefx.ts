@@ -146,6 +146,7 @@ export class TitleFX {
     this.running = true;
     void this.ready().then(() => {
       if (!this.running) return;
+      this.layout();   // the menu may have been laid out (or resized) since the renderer was made
       this.last = performance.now();
       this.renderer!.setAnimationLoop(() => this.tick());
     });
@@ -171,7 +172,8 @@ export class TitleFX {
   private layout(): void {
     if (!this.renderer) return;
     const cr = this.canvas.getBoundingClientRect(), tr = this.img.getBoundingClientRect();
-    if (!cr.width || !tr.width) return;
+    // not laid out yet (the menu is still coming in): try again next frame, for as long as it is meant to run
+    if (!cr.width || !tr.width) { if (this.running) requestAnimationFrame(() => this.layout()); return; }
     this.w = cr.width; this.h = cr.height;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.25 : 1.5));
     this.renderer.setSize(this.w, this.h, false);
