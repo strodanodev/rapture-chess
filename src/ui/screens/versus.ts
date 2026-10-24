@@ -4,6 +4,7 @@ import { ART } from '../cardview';
 import { h, icon } from '../dom';
 import type { Screen } from '../router';
 import { crest } from '../widgets';
+import { gvtMark } from '../brand';
 
 const TIPS = [
   'Held champions take the field first: open packs in the Shop to field your own.',
@@ -32,7 +33,7 @@ export function versusScreen(): Screen & { show(info: VersusInfo): void; progres
   const el = h('section', { class: 'versus', aria: { label: 'Loading the match', busy: 'true' } },
     a.el, b.el,
     h('div', { class: 'vs-mark' }, h('div', { class: 'vs-flash' }), h('span', { class: 'gilded', text: 'VS' })),
-    h('div', { class: 'vs-foot' }, realm, h('div', { class: 'vs-bar' }, bar), label, tip, h('span', { class: 'vs-rune' }, icon('rune'))));
+    h('div', { class: 'vs-foot' }, gvtMark('vs-gvt'), realm, h('div', { class: 'vs-bar' }, bar), label, tip, h('span', { class: 'vs-rune' }, icon('rune'))));
 
   return {
     id: 'versus', el, opaque: true,

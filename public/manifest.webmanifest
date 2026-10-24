@@ -7,5 +7,5 @@
   "orientation": "any",
   "background_color": "#050409",
   "theme_color": "#050409",
-  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+  "icons": [{ "src": "/brand/emblem.webp", "sizes": "512x495", "type": "image/webp", "purpose": "any" }]
 }

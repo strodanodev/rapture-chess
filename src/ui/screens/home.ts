@@ -6,6 +6,7 @@ import { embers, h, icon, stagger } from '../dom';
 import type { IconName } from '../icons';
 import { record } from '../prefs';
 import { go, type Screen } from '../router';
+import { emblem, gvtMark, titleArt } from '../brand';
 import { walletChip } from '../widgets';
 
 export function homeScreen(app: App): Screen & { setMate(name: string, where: string, san: string): void } {
@@ -45,9 +46,9 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
   };
 
   const logo = h('div', { class: 'logo' },
-    h('div', { class: 'logo-emblem' }, icon('emblem'), h('div', { class: 'logo-ring' })),
+    h('div', { class: 'logo-emblem' }, emblem(), h('div', { class: 'logo-ring' })),
     h('p', { class: 'kicker', text: 'LitVM Games presents' }),
-    h('h1', { class: 'logo-word' }, h('span', { class: 'gilded', text: 'Rapture' }), h('span', { class: 'logo-sub', text: 'Chess' })),
+    h('h1', { class: 'logo-word' }, titleArt()),
     h('p', { class: 'tagline', text: 'Fifty champions of Rapture ARC 1. One board. Settled on LitNode.' }));
 
   // the plaque naming the checkmate re-enacted on the board behind the menu
@@ -59,7 +60,7 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
   const el = h('section', { class: 'home', aria: { label: 'Main menu' } },
     h('div', { class: 'home-scrim' }),
     embers(18, ['#ffc95e', '#ff7438', '#ffe2a0']),
-    h('header', { class: 'home-top' }, h('span', { class: 'badge outline live', text: 'Season 0 · Liteforge' }), walletChip(app)),
+    h('header', { class: 'home-top' }, h('div', { class: 'home-brand' }, gvtMark(), h('span', { class: 'badge outline live', text: 'Season 0 · Liteforge' })), walletChip(app)),
     h('div', { class: 'home-main' }, logo, plaque, menu),
     feature,
     h('footer', { class: 'home-foot' }, h('span', { text: 'Built with Deckwright · three.js · LitNode' })));

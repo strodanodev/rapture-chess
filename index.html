@@ -11,7 +11,8 @@
 <meta name="apple-mobile-web-app-title" content="Rapture Chess" />
 <title>Rapture Chess</title>
 <meta name="description" content="3D chess on LitVM: the Rapture ARC 1 champions take the board. Built with Deckwright and three.js, settled on LitNode." />
-<link rel="icon" href="/favicon.svg" />
+<link rel="icon" href="/brand/emblem-64.png" type="image/png" />
+<link rel="preload" href="/brand/rapture-chess.webp" as="image" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <style>
   /* the boot screen paints before any script or stylesheet arrives */
@@ -20,7 +21,10 @@
   #boot.done { opacity: 0; visibility: hidden; }
   #boot .b-in { display: grid; justify-items: center; gap: 18px; width: min(360px, 78vw); text-align: center; }
   #boot .b-emb { position: relative; width: 132px; height: 132px; }
-  #boot .b-emb svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #boot .b-emb svg, #boot .b-mark { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #boot .b-mark { inset: 14%; width: 72%; height: 72%; object-fit: contain; filter: drop-shadow(0 0 10px rgba(255, 190, 80, 0.5)); }
+  #boot .b-gvt { height: 34px; width: auto; opacity: 0.9; }
+  #boot .b-title { width: 100%; height: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.85)); }
   #boot .b-spin { animation: bspin 6s linear infinite; opacity: 0.85; }
   #boot .b-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 190, 80, 0.22), transparent 62%); animation: bpulse 2.4s ease-in-out infinite; }
   #boot h1 { margin: 6px 0 0; font-weight: 600; font-size: 30px; letter-spacing: 0.32em; text-transform: uppercase; color: #fff1cc; text-indent: 0.32em; }
@@ -43,9 +47,10 @@
     <div class="b-emb">
       <div class="b-glow"></div>
       <svg class="b-spin" viewBox="0 0 120 120" fill="none" stroke="currentColor"><circle cx="60" cy="60" r="57" stroke-width="1" stroke-dasharray="2 6" /><path d="M60 1v12M60 107v12M1 60h12M107 60h12" stroke-width="2" /></svg>
-      <svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-linejoin="round"><circle cx="60" cy="60" r="47" stroke-width="2.2" /><path d="M60 22 88 60 60 98 32 60z" stroke-width="2.2" fill="currentColor" fill-opacity=".08" /><path d="M47 75h26M50 70l-2-15 7 5 5-11 5 11 7-5-2 15z" stroke-width="2.4" fill="currentColor" fill-opacity=".2" /></svg>
+      <img class="b-mark" src="/brand/emblem.webp" alt="" />
     </div>
-    <h1>Rapture<span>Chess</span></h1>
+    <img class="b-title" src="/brand/rapture-chess.webp" alt="Rapture Chess" />
+    <img class="b-gvt" src="/brand/gods-vs-titans.webp" alt="Gods vs Titans" />
     <div class="b-track"><div id="boot-bar"></div></div>
     <p id="boot-text">Lighting the braziers</p>
   </div>

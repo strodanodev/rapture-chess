@@ -11,7 +11,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
-  BloomEffect, ChromaticAberrationEffect, ClearPass, HueSaturationEffect, NoiseEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, VignetteEffect, BlendFunction, KernelSize, ToneMappingEffect, ToneMappingMode,
+  BloomEffect, ChromaticAberrationEffect, HueSaturationEffect, NoiseEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, VignetteEffect, BlendFunction, KernelSize, ToneMappingEffect, ToneMappingMode,
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
 import { tweens } from './tween';
@@ -324,19 +324,6 @@ export class Stage {
       if (shaking) this.camera.position.sub(this.shakeOffset);
       this.govern(dt);
     });
-  }
-
-  /** Draw `scene` over the arena, after ambient occlusion and before bloom: its own depth, the same camera. Returns a
-   *  switch for it (the menu title is the only user). */
-  overlay(scene: THREE.Scene): (on: boolean) => void {
-    const clear = new ClearPass(false, true, false);
-    const pass = new RenderPass(scene, this.camera);
-    pass.clearPass.enabled = false;
-    pass.ignoreBackground = true;
-    const at = this.ao ? 2 : 1;
-    this.composer.addPass(clear, at);
-    this.composer.addPass(pass, at + 1);
-    return (on) => { clear.enabled = on; pass.enabled = on; };
   }
 
   /** A short camera tremor (a capture lands). */

@@ -194,7 +194,7 @@ button.ccard:hover { box-shadow: 0 22px 46px rgba(0, 0, 0, 0.6), 0 0 30px color-
 .ccard.dim .inner { filter: saturate(0.25) brightness(0.55); }
 .ccard.back { background: linear-gradient(160deg, var(--gold-1), var(--gold-4) 45%, var(--gold-2)); }
 .ccard.back .inner { background: radial-gradient(circle at 50% 45%, #2b1d36, #0b0810 70%); display: grid; place-items: center; }
-.ccard.back svg { width: 56%; color: var(--gold-2); opacity: 0.9; }
+.ccard.back img { width: 64%; opacity: 0.92; filter: drop-shadow(0 0 10px rgba(255, 190, 80, 0.45)); }
 
 /* ------------------------------------------------------------------ modal */
 .scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: max(16px, var(--safe-t)) max(16px, var(--safe-r)) max(16px, var(--safe-b)) max(16px, var(--safe-l)); background: rgba(3, 2, 6, 0.78); animation: fadeIn 0.25s ease-out; }

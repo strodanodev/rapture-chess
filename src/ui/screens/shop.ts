@@ -10,6 +10,7 @@ import { cardBack, championCard, RARITY } from '../cardview';
 import { embers, h, icon, toast } from '../dom';
 import { go, pageHead, type Screen } from '../router';
 import { walletChip } from '../widgets';
+import { emblem } from '../brand';
 
 const KIND_VAR: Record<string, string> = { God: '--r-god', Titan: '--r-titan', King: '--r-king', Demigod: '--r-demigod', Mortal: '--r-mortal' };
 
@@ -30,7 +31,7 @@ export function shopScreen(app: App): Screen {
   const pack = h('div', { class: 'pack3d', aria: { hidden: 'true' } },
     h('div', { class: 'pack-face' },
       h('div', { class: 'pack-foil' }),
-      h('div', { class: 'pack-emblem' }, icon('emblem')),
+      h('div', { class: 'pack-emblem' }, emblem()),
       h('div', { class: 'pack-title' }, h('span', { class: 'gilded', text: 'Rapture' }), h('small', { text: 'ARC 1 · Booster' })),
       h('div', { class: 'pack-count', text: '5 champions' })));
 

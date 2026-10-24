@@ -51,13 +51,13 @@ blender -b --python scripts/export-avatars.py -- <dir of slug.glb> public/models
 # the two arenas -> public/models/valhalla.glb and underworld.glb, with check renders; textured with the CC0
 # Poly Haven sets in scripts/textures (512 px copies of the 1k sets; README.txt there) and merged by material
 blender -b --python scripts/build-arenas.py -- public/models renders
-# the main-menu title in bevelled Cinzel -> public/models/title.glb (the TTFs come from the game's own WOFFs)
+# the main-menu title: bevelled gold Cinzel rendered to an image (crop and convert to public/brand/rapture-chess.webp)
 python scripts/woff2ttf.py node_modules/@fontsource/cinzel/files/cinzel-latin-900-normal.woff scripts/fonts/Cinzel-Black.ttf
 python scripts/woff2ttf.py node_modules/@fontsource/cinzel/files/cinzel-latin-700-normal.woff scripts/fonts/Cinzel-Bold.ttf
-blender -b --python scripts/build-logo.py -- public/models
+blender -b --python scripts/render-logo.py -- renders/logo.png
 ```
 
-Both scripts also run inside a live Blender through MCP (`sys.argv = ["", "--", out_dir, ...]`, then exec the file):
+The arena script also runs inside a live Blender through MCP (`sys.argv = ["", "--", out_dir, ...]`, then exec the file):
 they empty the open file instead of loading factory settings, which would unload the MCP addon.
 
 ## Layout

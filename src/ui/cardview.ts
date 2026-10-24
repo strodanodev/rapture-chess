@@ -3,6 +3,7 @@ import type { Card } from '../roster';
 import { ELEMENT_COLOR, PIECE_NAME } from '../roster';
 import type { PieceType } from '../rules/chessRules';
 import { h, icon, toast } from './dom';
+import { emblem } from './brand';
 
 export const ART = (slug: string): string => `${import.meta.env.BASE_URL}art/${slug}.webp`;
 /** The piece each Kind fights as. */
@@ -27,7 +28,7 @@ export function championCard(card: Card, opts: { owned?: boolean; type?: PieceTy
 
 /** A face-down card (the pack reveal). */
 export function cardBack(): HTMLElement {
-  return h('div', { class: 'ccard back' }, h('div', { class: 'inner' }, icon('emblem')));
+  return h('div', { class: 'ccard back' }, h('div', { class: 'inner' }, emblem()));
 }
 
 /** Pointer-follow tilt and foil: transform only, so it stays on the compositor. */

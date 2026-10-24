@@ -22,7 +22,6 @@ import { Army, PieceView } from './scene/pieces';
 import { VFX } from './scene/vfx';
 import { Realm, REALM_NAME, type RealmId } from './scene/realm';
 import { loadSet, preloadAvatars } from './scene/assets';
-import { Title3D } from './scene/title';
 import { MATES } from './scene/mates';
 import { Hud, type Fallen } from './ui/hud';
 import { LocalMatch, type Match, type MatchEvents } from './game/session';
@@ -132,7 +131,6 @@ register(versus);
 register(hud.screen());
 onScreen((s) => {
   if (!stage) return;
-  showTitle(s.id === 'home');
   stage.paused = !!s.opaque;
   const menu = s.id !== 'match' && s.id !== 'versus';
   if (menu && !stage.attract) stage.setAttract(true);
@@ -187,22 +185,7 @@ async function ensureStage(): Promise<void> {
   }
 }
 
-// ------------------------------------------------------------------ the menu: 3D title and the checkmate gallery
-let title: Title3D | null = null;
-let titleOverlay: ((on: boolean) => void) | null = null;
-/** Fit the 3D title over the menu's logo slot (CSS decides where that is on every screen size). */
-function placeTitle(): void {
-  if (!title || !stage) return;
-  const slot = document.querySelector<HTMLElement>('.home:not([hidden]) .logo-word');
-  title.place(slot?.getBoundingClientRect() ?? null, stage.camera, { width: innerWidth, height: innerHeight });
-}
-function showTitle(on: boolean): void {
-  if (!title) return;
-  title.show(on);
-  titleOverlay?.(on);
-  if (on) { requestAnimationFrame(placeTitle); setTimeout(placeTitle, 600); }
-}
-addEventListener('resize', () => setTimeout(placeTitle, 50));
+// ------------------------------------------------------------------ the menu: the checkmate gallery
 
 /** The board behind the menu re-enacts a famous checkmate: the final position of the game, the mating move marked,
  *  the mated god-king in check. Each side fields one champion per piece type, so a position loads a dozen avatars. */
@@ -561,13 +544,9 @@ await realm!.load(realmFor(prefs.realm, prefs.side));
 vfx!.embers(new THREE.Color(realm!.preset.embers));
 accent(prefs.side);
 boot(0.75, 'Awakening the gods');
-title = new Title3D(stage!.scene.environment);
-titleOverlay = stage!.overlay(title.scene);
-titleOverlay(false);
-stage!.onUpdate((dt, t) => title!.update(dt, t, stage!.camera));
-// the first position streams its champions in behind the menu; the boot only waits for the title and the fonts
+// the first position streams its champions in behind the menu; the boot only waits for the fonts
 void tableau(false);
-await Promise.all([title.load().then(() => document.documentElement.classList.add('logo3d')).catch((e) => console.warn('[chess] 3D title unavailable', e)), document.fonts.ready]);
+await document.fonts.ready;
 boot(1, 'Ready');
 const bootEl = document.getElementById('boot')!;
 bootEl.classList.add('done');
