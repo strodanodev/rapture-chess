@@ -9,7 +9,7 @@
  * The relay echoes accepted entries; only those move the board, so both screens replay the same log.
  */
 import type { Move } from 'chess.js';
-import { connectShell, parseLaunch, type CabinetShell } from 'deckwright/src/client/shell.ts';
+import { connectShell, parseLaunch, type CabinetShell } from 'tessaract/src/client/shell.ts';
 import { acceptDraw, createChessRules, declineDraw, entryAction, offerDraw, type ChessRules, type ChessState, concede, Op, type Side } from '../rules/chessRules';
 import { CHESS_RULESET_V1 } from '../litnode/chessTitle';
 import type { LogEntry, Match, MatchEvents } from './session';

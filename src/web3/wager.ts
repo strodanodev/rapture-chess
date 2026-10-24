@@ -13,8 +13,8 @@
  * v2 goes live, then rapture-chess.v2 with the v2 escrow address.
  */
 import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesToHex, encodeCall, utf8ToHex, words, uintAt, addressAt, boolAt } from 'deckwright/web/lib/abi.js';
-import type { ChainClient } from 'deckwright/web/lib/chain.js';
+import { bytesToHex, encodeCall, utf8ToHex, words, uintAt, addressAt, boolAt } from 'tessaract/web/lib/abi.js';
+import type { ChainClient } from 'tessaract/web/lib/chain.js';
 import { canonical } from './canonical';
 
 export { canonical };

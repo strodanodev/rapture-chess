@@ -3,7 +3,7 @@
  * one Kind: Gods take the royal seats, Titans the rooks, Kings the bishops, Demigods the knights and Mortals the
  * pawn line. Cards the player's wallet holds are seated first, so a collector fields their own champions.
  */
-import { seededRandom, shuffle } from 'deckwright/src/core/rng.ts';
+import { seededRandom, shuffle } from 'tessaract/src/core/rng.ts';
 import type { PieceType, Side } from './rules/chessRules';
 
 export interface Card {

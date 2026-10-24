@@ -8,7 +8,7 @@
  *   // when an arcade match ends: wager.showMatch(matchId, settled.signatures)
  */
 import './wager.css';
-import { createChain, type ChainClient } from 'deckwright/web/lib/chain.js';
+import { createChain, type ChainClient } from 'tessaract/web/lib/chain.js';
 import type { Web3Link } from '../web3/wallet';
 import {
   claimProblem, deltaClaimBytes, deltaWinner, encodeClaim, encodeClaimWithWinner, encodeRequestUnstake, winnerSignature, encodeStake, encodeUnstake, encodeWithdraw, formatZkLtc,

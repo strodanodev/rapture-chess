@@ -1,7 +1,7 @@
 # Rapture Chess
 
 3D chess on LitVM, where the fifty champions of **Rapture ARC 1** take the board. Built with
-[Deckwright](https://github.com/strodanodev/deckwright), three.js and Blender.
+[Tessaract](https://github.com/strodanodev/tessaract), three.js and Blender.
 
 - **Alliance is White, Horde is Black.** Each piece type is held by one Kind: Gods on the royal seats, Titans in the
   rook towers, Kings as bishops, Demigods as knights, Mortals on the pawn line.

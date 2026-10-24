@@ -2,7 +2,7 @@
  * Liteforge reads with a fallback: the public RPC answers "Bandwidth limit exceeded" under load, so every read retries
  * once on the partner endpoint LitNode's own cabinet falls back to. Writes still go through the wallet.
  */
-import { createChain, type ChainClient } from 'deckwright/web/lib/chain.js';
+import { createChain, type ChainClient } from 'tessaract/web/lib/chain.js';
 
 export const RPCS = [
   (import.meta.env as Record<string, string | undefined>).VITE_RPC_URL ?? 'https://liteforge.rpc.caldera.xyz/http',

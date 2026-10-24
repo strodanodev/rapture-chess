@@ -4,7 +4,7 @@
  * (the freshest announced https address that answers), or uses VITE_LITNODE_URL / the node that hosted a match.
  */
 import { createReadChain } from '../web3/rpc';
-import { words, uintAt } from 'deckwright/web/lib/abi.js';
+import { words, uintAt } from 'tessaract/web/lib/abi.js';
 import { CHESS_RULESET_ID } from '../web3/wager';
 
 const NODE_DIRECTORY = '0xac0C73008028E3eAA05Bc5C72f0C233F94b4E3df';

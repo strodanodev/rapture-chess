@@ -1,5 +1,5 @@
 // Deckwright's hand-rolled ABI and JSON-RPC helpers (web/lib), the parts the wager flow uses.
-declare module 'deckwright/web/lib/abi.js' {
+declare module 'tessaract/web/lib/abi.js' {
   export function isHex(s: unknown, bytes?: number): boolean;
   export function isAddress(s: unknown): boolean;
   export function bytesToHex(bytes: Uint8Array): string;
@@ -16,7 +16,7 @@ declare module 'deckwright/web/lib/abi.js' {
   export const addressAt: (ws: string[], i: number) => string;
   export function extractRevertData(err: unknown): string | null;
 }
-declare module 'deckwright/web/lib/chain.js' {
+declare module 'tessaract/web/lib/chain.js' {
   export interface ChainClient {
     call(tx: { to: string; data: string; from?: string; blockTag?: string }, opts?: { signal?: AbortSignal }): Promise<string>;
     waitForReceipt(hash: string, opts?: { timeoutMs?: number; pollMs?: number; signal?: AbortSignal }): Promise<{ status: string | number; blockNumber?: string; logs?: unknown[] } & Record<string, unknown>>;

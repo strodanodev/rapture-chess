@@ -6,9 +6,9 @@
  * be opened inside 255 blocks; past that it can only be refunded. Liteforge is Arbitrum Nitro, so the contract's
  * block.number is not the RPC's: readiness is the contract's own `phaseOf`/`recentPacks`, never block arithmetic here.
  */
-import { encodeCall, words, uintAt, boolAt, extractRevertData } from 'deckwright/web/lib/abi.js';
-import type { ChainClient } from 'deckwright/web/lib/chain.js';
-import type { Wallet } from 'deckwright/web/lib/wallet.js';
+import { encodeCall, words, uintAt, boolAt, extractRevertData } from 'tessaract/web/lib/abi.js';
+import type { ChainClient } from 'tessaract/web/lib/chain.js';
+import type { Wallet } from 'tessaract/web/lib/wallet.js';
 
 export const PACKSHOP = '0x3E39be64A4dE8752E45067d6Bbe4787b4D272B0c';
 /** Odds weights in contract order. */

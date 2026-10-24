@@ -15,7 +15,7 @@ import './ui/hud.css';
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
 import type { Move } from 'chess.js';
-import { parseLaunch } from 'deckwright/src/client/shell.ts';
+import { parseLaunch } from 'tessaract/src/client/shell.ts';
 import { Stage } from './scene/stage';
 import { BoardView, squareToWorld, worldToSquare } from './scene/board';
 import { Army, PieceView } from './scene/pieces';

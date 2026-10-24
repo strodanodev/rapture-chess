@@ -2,8 +2,8 @@
  * Deckwright's wallet and holdings layer, pointed at the Rapture ARC 1 collection: connect a Liteforge wallet,
  * then learn which snapshot cards (designs) it holds so the roster can seat them. Nothing here signs or sends.
  */
-import { createWallet, type Wallet } from 'deckwright/web/lib/wallet.js';
-import { createHoldings, type Holdings } from 'deckwright/web/lib/holdings.js';
+import { createWallet, type Wallet } from 'tessaract/web/lib/wallet.js';
+import { createHoldings, type Holdings } from 'tessaract/web/lib/holdings.js';
 import type { Card, Collection } from '../roster';
 
 export interface Web3Link {

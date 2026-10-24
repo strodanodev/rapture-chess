@@ -1,5 +1,5 @@
 /** What the menu screens need from the game shell (main.ts): data, the wallet, and the few actions that touch the 3D stage. */
-import type { ChainClient } from 'deckwright/web/lib/chain.js';
+import type { ChainClient } from 'tessaract/web/lib/chain.js';
 import type { Collection } from '../roster';
 import type { Side } from '../rules/chessRules';
 import type { RealmId } from '../scene/realm';

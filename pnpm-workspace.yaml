@@ -1,3 +1,3 @@
 allowBuilds:
   esbuild: true
-  "deckwright@https://codeload.github.com/strodanodev/deckwright/tar.gz/32e20fafc109013e9d477db4bf7a53c69485ccac": true
+  "tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e": true

@@ -20,15 +20,15 @@ importers:
       chess.js:
         specifier: 1.4.0
         version: 1.4.0
-      deckwright:
-        specifier: github:strodanodev/deckwright
-        version: https://codeload.github.com/strodanodev/deckwright/tar.gz/32e20fafc109013e9d477db4bf7a53c69485ccac
       n8ao:
         specifier: 2.0.1
         version: 2.0.1(postprocessing@6.39.5(three@0.186.1))(three@0.186.1)
       postprocessing:
         specifier: 6.39.5
         version: 6.39.5(three@0.186.1)
+      tessaract:
+        specifier: github:strodanodev/tessaract#v0.9.0
+        version: https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e
       three:
         specifier: 0.186.1
         version: 0.186.1
@@ -728,12 +728,6 @@ packages:
     resolution: {integrity: sha512-9iE1PgSik9HeIIw2JO94IidnE3eBoQrFJ3w7sFuzSX4DpmZ3v5sZpUiV5Swcf6mQEF+Y0ru8Neo+p+nyh2J+hQ==}
     engines: {node: '>=10'}
 
-  deckwright@https://codeload.github.com/strodanodev/deckwright/tar.gz/32e20fafc109013e9d477db4bf7a53c69485ccac:
-    resolution: {gitHosted: true, integrity: sha512-V1I/xSZR6a3l2DUVDUpUl3ki3j26oyk5sRo4SobjLnsIcY6PpjMZ+glFJRlbFkzMuWAtRcJr/8/w6gkTc4zO9Q==, tarball: https://codeload.github.com/strodanodev/deckwright/tar.gz/32e20fafc109013e9d477db4bf7a53c69485ccac}
-    version: 0.2.0
-    engines: {node: '>=22'}
-    hasBin: true
-
   depd@2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
     engines: {node: '>= 0.8'}
@@ -1257,6 +1251,12 @@ packages:
   supports-color@8.1.1:
     resolution: {integrity: sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==}
     engines: {node: '>=10'}
+
+  tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e:
+    resolution: {gitHosted: true, integrity: sha512-zhVO1ra6Bd4WLU/Ha41rdjrZgFtGvzn1CSPf9uPekVsWqLE7TVveUhlbb5eZy2qLGX3nWj4vFmJzye5694nYnQ==, tarball: https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e}
+    version: 0.9.0
+    engines: {node: '>=22'}
+    hasBin: true
 
   three.quarks@0.17.1:
     resolution: {integrity: sha512-HiyORXkPZTfy7OBA/IRJqTcNxpo53yctgV3N8dSUG/jdisiVciDFGyf6hVnOLQDrIEmzU0yOtNFvzo+JHCjc7A==}
@@ -2044,10 +2044,6 @@ snapshots:
 
   decamelize@4.0.0: {}
 
-  deckwright@https://codeload.github.com/strodanodev/deckwright/tar.gz/32e20fafc109013e9d477db4bf7a53c69485ccac:
-    dependencies:
-      esbuild: 0.28.1
-
   depd@2.0.0: {}
 
   detect-libc@2.1.2: {}
@@ -2613,6 +2609,10 @@ snapshots:
   supports-color@8.1.1:
     dependencies:
       has-flag: 4.0.0
+
+  tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/809674ae29777e3a7d65a7266490968d5fd0b77e:
+    dependencies:
+      esbuild: 0.28.1
 
   three.quarks@0.17.1(three@0.186.1):
     dependencies:
