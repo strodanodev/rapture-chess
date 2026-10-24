@@ -129,6 +129,12 @@ export class PieceView {
 
   setHighlight(on: boolean): void { if (this.rune) this.rune.emissiveIntensity = on ? 4.5 : 1.6; }
 
+  /** The point just over the champion's head, in world space: where its role mark hangs. */
+  crown(target: THREE.Vector3): THREE.Vector3 {
+    const p = this.group.position;
+    return target.set(p.x, p.y + (PLINTH_TOP[this.type] + PIECE_HEIGHT[this.type] + 0.12) * this.group.scale.y, p.z);
+  }
+
   update(dt: number, t: number): void {
     this.mixer?.update(dt);
     if (this.rune && this.rune.emissiveIntensity <= 1.6) this.rune.emissiveIntensity = 1.4 + 0.35 * Math.sin(t * 2.2 + this.idlePhase);
