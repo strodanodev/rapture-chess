@@ -203,3 +203,65 @@
   .inspect, .chronicle { display: none; }
   .dock { bottom: calc(var(--safe-b) + 10px); right: calc(var(--safe-r) + 10px); left: auto; transform: none; }
 }
+
+/* ------------------------------------------------------------------ phones, portrait: nothing over the board
+ * main.ts measures where the board lands (--board-top / --board-bottom, CSS px) after every camera move. The
+ * inspector and the banners take the band above the board, the moves and the kill feed the band below it, and each
+ * is compact enough to fit there. The fallbacks are the band on a 375 x 812 screen. */
+@media (max-width: 600px) and (orientation: portrait) {
+  .match { --bt: var(--board-top, 250px); --bb: var(--board-bottom, 600px); }
+  /* the champion inspector: one compact row (portrait, name, role), above the board; it steps aside after a few seconds */
+  .inspect { top: max(calc(var(--safe-t) + 112px), calc(var(--bt) - 66px)); bottom: auto; grid-template-columns: 44px 1fr; gap: 10px; padding: 6px 10px 6px 6px; min-height: 0; }
+  .ins-card .ccard { aspect-ratio: 1; }
+  .inspect .stats, .inspect .lore, .inspect .lore-quote, .inspect .prov, .inspect .id-tags { display: none; }
+  .inspect .ins-body { gap: 2px; align-content: center; }
+  .inspect .eyebrow { display: block; font-size: 9.5px; letter-spacing: 0.12em; }
+  .inspect.pop { animation: inspectDrop 0.3s var(--ease-out); }
+  @keyframes inspectDrop { from { opacity: 0; transform: translateY(-8px); } }
+  /* the moves: a single line of the latest plies, swiped sideways, just above your plate */
+  .match .chronicle { top: auto; bottom: calc(var(--safe-b) + 136px); height: 42px; border-image: url('/ui/plate.webp') 58 fill / 12px stretch; border-width: 1px; }
+  .chronicle .panel-head { display: none; }
+  .chronicle .moves { display: flex; flex-wrap: nowrap; gap: 4px; padding: 6px 10px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; align-items: center; }
+  .chronicle .moves::-webkit-scrollbar { display: none; }
+  .chronicle .moves li { flex: none; display: flex; gap: 6px; padding: 3px 8px; white-space: nowrap; background: rgba(255, 255, 255, 0.04); }
+  .chronicle .moves .n { color: var(--gold-3); }
+  .chronicle.closed { transform: translateY(12px); }
+  /* the kill feed: under the board, never across it */
+  .killfeed { top: auto; bottom: calc(var(--safe-b) + 184px); }
+  .killfeed .kf:not(:first-child) { display: none; }   /* only the latest kill: the gap above the moves holds one */
+  .fps-chip { top: calc(var(--safe-t) + 112px); }
+  /* banners sit over the band above the board, smaller */
+  .cine { top: max(calc(var(--safe-t) + 108px), calc(var(--bt) - 78px)); gap: 5px; }
+  .cine b { font-size: clamp(20px, 6.6vw, 32px); letter-spacing: 0.14em; text-indent: 0.14em; white-space: nowrap; }
+  .cine span { font-size: 10.5px; letter-spacing: 0.16em; }
+  .cine-line { width: 78vw; }
+  .draw-bar { top: auto; bottom: calc(var(--safe-b) + 186px); }
+}
+
+/* role marks: a chess glyph over every champion (src/ui/marks.ts); under the HUD (#ui is z 5), over the canvas */
+.marks { position: fixed; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; contain: strict; }
+.marks[hidden] { display: none; }
+.mark-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.mark-lines line { stroke: rgba(255, 238, 205, 0.6); stroke-width: 1.3; stroke-dasharray: 2 3; stroke-linecap: round; }
+.mark { position: absolute; left: 0; top: 0; width: 48px; height: 48px; margin: 0; padding: 0; border: 0; border-radius: 50%; background: none; pointer-events: auto; touch-action: none; cursor: pointer; transform-origin: 50% 50%; will-change: transform; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+.mark svg { position: relative; display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 2.5px rgba(0, 0, 0, 0.75)); transition: transform 0.15s var(--ease-out, ease-out); }
+.mark.w { --f: #f7f2e7; --o: #1a140d; }
+.mark.b { --f: #16121b; --o: #f1e8d4; }
+.mark.mine { cursor: grab; }
+.mark.mine:hover svg { transform: scale(1.12); }
+.mark.held { cursor: grabbing; }
+.mark.held svg { transform: scale(1.18); }
+.mark::before { content: ''; position: absolute; inset: 0; border-radius: 50%; opacity: 0; transition: opacity 0.2s; }
+.mark.sel::before { opacity: 1; background: radial-gradient(circle, rgba(255, 200, 90, 0.34), transparent 70%); box-shadow: 0 0 0 2px #ffc95e, 0 0 16px 3px rgba(255, 190, 80, 0.6); }
+.mark.hit::before { opacity: 1; box-shadow: 0 0 0 2px #ff6a4a, 0 0 14px 2px rgba(255, 90, 60, 0.6); animation: markPulse 1s ease-in-out infinite; }
+.mark.check::before { opacity: 1; background: radial-gradient(circle, rgba(255, 40, 40, 0.3), transparent 70%); box-shadow: 0 0 0 2px #ff3b3b, 0 0 18px 4px rgba(255, 40, 40, 0.7); animation: markPulse 0.8s ease-in-out infinite; }
+@keyframes markPulse { 50% { opacity: 0.45; } }
+.still .mark::before { animation: none; }
+
+/* phones, landscape: the board takes the middle third; keep the plates and the feed narrow enough to stay off it */
+@media (max-height: 500px) and (orientation: landscape) {
+  .plate { width: 236px; }
+  .killfeed { top: calc(var(--safe-t) + 78px); left: calc(var(--safe-l) + 10px); width: 220px; }
+  .killfeed .kf:not(:first-child) { display: none; }
+  .kf { font-size: 11px; }
+}

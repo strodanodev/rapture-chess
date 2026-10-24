@@ -96,7 +96,7 @@ export class Hud {
   private readonly medText = h('span', { class: 'md-text' });
   private readonly status = h('p', { class: 'hud-status' });
   private readonly drawBar = h('div', { class: 'draw-bar', hidden: true, role: 'status' });
-  private readonly inspect = h('aside', { class: 'inspect', hidden: true });
+  private readonly inspect = h('aside', { class: 'inspect', hidden: true, on: { click: () => { if (this.narrow.matches) this.inspect.hidden = true; } } });
   private readonly chronicle = h('aside', { class: 'chronicle panel soft' });
   private readonly moves = h('ol', { class: 'moves tabnum' });
   private readonly feed = h('div', { class: 'killfeed', aria: { live: 'polite' } });
@@ -110,6 +110,9 @@ export class Hud {
   private readonly chronBtn: HTMLButtonElement;
   private clockShown = '';
   private relay = false;
+  private inspectT = 0;
+  /** Phones: the HUD keeps to the bands above and below the board, and the inspector tidies itself away. */
+  private readonly narrow = matchMedia('(max-width: 600px)');
 
   constructor() {
     this.medallion.append(h('span', { class: 'md-ring' }), this.medText);
@@ -130,6 +133,12 @@ export class Hud {
   }
 
   screen(): Screen { return { id: 'match', el: this.el }; }
+
+  /** Where the board sits on screen (CSS px from the top): the phone layout places its panels around it. */
+  setBoardBand(top: number, bottom: number): void {
+    this.el.style.setProperty('--board-top', `${Math.round(top)}px`);
+    this.el.style.setProperty('--board-bottom', `${Math.round(bottom)}px`);
+  }
 
   bind(handlers: HudHandlers): void {
     this.handlers = handlers;
@@ -200,7 +209,10 @@ export class Hud {
 
   // ------------------------------------------------------------------ the inspector
   showCard(card: Card | null, type: PieceType | null, held: boolean, side: Side | null): void {
+    clearTimeout(this.inspectT);
     if (!card || !type) { this.inspect.hidden = true; return; }
+    // on a phone the card is a compact strip that steps aside after a few seconds (or at a tap)
+    if (this.narrow.matches) this.inspectT = window.setTimeout(() => { this.inspect.hidden = true; }, 4500);
     this.inspect.hidden = false;
     this.inspect.style.setProperty('--accent', ELEMENT_COLOR[card.element]);
     this.inspect.replaceChildren(
@@ -221,6 +233,7 @@ export class Hud {
     this.moves.replaceChildren(...rows);
     this.moves.lastElementChild?.classList.add('last');
     this.moves.scrollTop = this.moves.scrollHeight;
+    this.moves.scrollLeft = this.moves.scrollWidth;   // the phone strip scrolls sideways
   }
   toggleChronicle(): void { this.chronicle.classList.toggle('closed'); this.chronBtn.classList.toggle('on', !this.chronicle.classList.contains('closed')); }
 
