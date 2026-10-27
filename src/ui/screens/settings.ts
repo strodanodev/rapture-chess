@@ -10,9 +10,9 @@ const QUALITY: Array<[string, string, string]> = [
   ['auto', 'Auto', 'Holds 60 fps: steps the preset down when frames drop and back up when there is headroom.'],
   ['lite', 'Lite', 'Three-quarter resolution and no shadows. For the weakest phones.'],
   ['low', 'Low', 'Native resolution, no mirror floor or ambient occlusion. For older phones.'],
-  ['medium', 'Medium', 'Sharper, with bloom. The phone default.'],
-  ['high', 'High', 'Ambient occlusion and a mirror floor. The desktop default.'],
-  ['ultra', 'Ultra', 'Full resolution, large bloom, sharp reflections.'],
+  ['medium', 'Medium', 'Sharper, with bloom, quarter-resolution godrays and two fire lights. The phone default.'],
+  ['high', 'High', 'Ambient occlusion, godrays, every fire light and a mirror floor. The desktop default.'],
+  ['ultra', 'Ultra', 'Full resolution, large bloom, sharp reflections, finer godrays.'],
 ];
 
 export function settingsScreen(app: App): Screen {

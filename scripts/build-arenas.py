@@ -1,10 +1,11 @@
 # Rapture Chess: the two arenas the board stands in, built parametrically in Blender and exported as GLBs.
 #   blender -b --python scripts/build-arenas.py -- public/models renders [--no-render]
 # or, in a live Blender (MCP): sys.argv = ["", "--", out_dir, render_dir, "--no-render"]; exec(open(path).read())
-# Valhalla: a round hall of carved stone pillars and arches on flagstones, banners, braziers, a rune circle round
-#   a polished dais (the game draws its mirror there).
-# Underworld: a basalt crater on burned ground, obsidian spires, a lava moat with bridges, bone totems, stalactites
-#   and ember crystals.
+# Valhalla: a round hall of carved stone pillars and arches on flagstones, banners and round shields, braziers, a rune
+#   circle round a polished dais (the game draws its mirror there), and a roof of beams round an open oculus (the
+#   moonlight the game raymarches falls through it).
+# Underworld: a basalt crater on burned ground, obsidian spires, a lava moat with bridges, bone totems, stalactites,
+#   ember crystals, and iron chains hanging from the rib dome with ember cages, left and right of the players.
 # Stone, ground and rock are CC0 Poly Haven sets (scripts/textures, 1k: diffuse, OpenGL normal, AO/rough/metal),
 # UV-mapped by world-space box projection so the tiling stays even across pieces. Before export every mesh is merged
 # by material: a handful of draw calls per arena, which is what keeps phones at 60 fps.
@@ -154,6 +155,25 @@ def box(name, size, loc, material, rot=(0, 0, 0), parent=None, bev=0.0):
     return o
 
 
+def facing(o, a):
+    """Stand a spun (Z-axis) piece upright, its face turned toward the hall's centre from angle a."""
+    o.rotation_euler = (math.pi / 2, 0, a - math.pi / 2)
+    return o
+
+
+def chain(name, top, links, pitch, material, parent):
+    """A hanging chain: torus links alternating 90 degrees, from `top` straight down."""
+    x, y, z = top
+    for k in range(links):
+        bpy.ops.mesh.primitive_torus_add(major_radius=pitch * 0.62, minor_radius=pitch * 0.15, major_segments=8, minor_segments=5,
+                                         location=(x, y, z - k * pitch), rotation=(math.pi / 2, 0, (k % 2) * math.pi / 2))
+        o = bpy.context.active_object
+        o.name = f"{name}_{k}"
+        o.data.materials.append(material)
+        o.parent = parent
+    return z - links * pitch
+
+
 def ring_floor(name, outer, inner, z, depth, material, parent, bev=0.0, sides=4, rot=0.0):
     bm = bmesh.new()
     vo = [bm.verts.new((outer * math.cos(rot + i * math.tau / sides), outer * math.sin(rot + i * math.tau / sides), z)) for i in range(sides)]
@@ -275,6 +295,7 @@ def valhalla():
     FIRE = mat("vh_fire", (0.1, 0.05, 0.02), 0.0, 0.8, (1.0, 0.55, 0.15), 6.0)
     RUNE = mat("vh_rune", (0.05, 0.05, 0.08), 0.0, 0.6, (0.55, 0.8, 1.0), 3.0)
     BANNER = mat("vh_banner", (0.05, 0.12, 0.28), 0.0, 0.85)
+    SHIELD = mat("vh_shield", (0.08, 0.14, 0.3), 0.4, 0.5)
     root = link(bpy.data.objects.new("Valhalla", None))
 
     # the hall floor: flagstones from the dais (radius 9, the game's polished mirror) out to the walkway, gold trim
@@ -304,6 +325,12 @@ def valhalla():
             box(f"BannerRod_{i}", (0.08, 1.4, 0.08), (bx, by, 6.15), GOLD, rot=(0, 0, a), parent=root)
             box(f"BannerHem_{i}", (0.07, 1.1, 0.12), (bx - 0.01 * math.cos(a), by - 0.01 * math.sin(a), 3.15), GOLD, rot=(0, 0, a), parent=root)
             box(f"BannerSigil_{i}", (0.07, 0.42, 0.42), (bx - 0.02 * math.cos(a), by - 0.02 * math.sin(a), 4.9), RUNE, rot=(math.pi / 4, 0, a), parent=root)
+        else:
+            # a round shield on the others: a painted face, a gold rim and a gold boss
+            sx, sy = 14.5 * math.cos(a), 14.5 * math.sin(a)
+            facing(spin(f"Shield_{i}", [(0, 0.0), (0.62, 0.0), (0.6, 0.06), (0, 0.1)], SHIELD, segments=24, loc=(sx, sy, 4.5), parent=root), a)
+            facing(spin(f"ShieldRim_{i}", [(0.6, -0.02), (0.68, -0.02), (0.7, 0.05), (0.66, 0.11), (0.58, 0.09)], GOLD, segments=24, loc=(sx, sy, 4.5), parent=root), a)
+            facing(spin(f"ShieldBoss_{i}", [(0, 0.08), (0.16, 0.08), (0.13, 0.18), (0.05, 0.24), (0, 0.25)], GOLD, segments=12, loc=(sx, sy, 4.5), parent=root), a)
     # arches between pillars: a lintel ring high up, and a second ring of taller pillars further out
     ring_floor("Lintel", 16.0, 14.4, 7.9, 0.5, BLOCKS, root, bev=0.03, sides=16, rot=math.pi / 16)
     ring_floor("LintelGold", 15.3, 15.1, 7.95, 0.08, GOLD, root, sides=16, rot=math.pi / 16)
@@ -321,6 +348,9 @@ def valhalla():
     for i in range(16):
         a = i * math.tau / 16 + math.pi / 16
         box(f"Beam_{i}", (12.0, 0.35, 0.45), (13.0 * math.cos(a), 13.0 * math.sin(a), 15.0), DARK, rot=(0, math.radians(-18), a), parent=root, bev=0.02)
+    # the oculus: a stone ring where the beams meet, gold on its lip, open to the sky (the moonlight falls through it)
+    ring_floor("Oculus", 8.0, 6.6, 13.45, 0.55, BLOCKS, root, bev=0.03, sides=16, rot=math.pi / 16)
+    ring_floor("OculusGold", 6.75, 6.55, 13.5, 0.12, GOLD, root, sides=16, rot=math.pi / 16)
     # fallen blocks and standing runestones around the floor for scale
     for i in range(10):
         a = random.uniform(0, math.tau)
@@ -346,6 +376,7 @@ def underworld():
     LAVA = mat("uw_lava", (0.2, 0.05, 0.0), 0.0, 0.9, (1.0, 0.3, 0.05), 5.0)
     BONE = mat("uw_bone", (0.78, 0.72, 0.6), 0.0, 0.7)
     EMBER = mat("uw_ember", (0.05, 0.02, 0.01), 0.0, 0.9, (1.0, 0.45, 0.1), 4.0)
+    IRON = mat("uw_iron", (0.12, 0.1, 0.09), 0.85, 0.45)
     CRYSTAL = mat("uw_crystal", (0.12, 0.02, 0.05), 0.2, 0.2, (1.0, 0.18, 0.12), 3.0)
     root = link(bpy.data.objects.new("Underworld", None))
 
@@ -402,6 +433,15 @@ def underworld():
         h = random.uniform(1.5, 4.0)
         z = 13.5 + (r - 11.0) * math.tan(math.radians(22)) - 0.3
         spin(f"Stalactite_{i}", [(0, 0), (0.35, 0), (0.25, -h * 0.4), (0.1, -h * 0.85), (0, -h)], BASALT, segments=6, loc=(r * math.cos(a), r * math.sin(a), z), rot=a, parent=root)
+    # iron chains from the rib dome, each holding an ember cage, on the left and right of both players: outside the
+    # play cameras' view of the board (they sit on the other axis) and outside the menu camera's orbit (12.6 m)
+    for i in range(2):
+        a = i * math.pi
+        x, y = 14.0 * math.cos(a), 14.0 * math.sin(a)
+        z = 13.5 + (14.0 - 11.0) * math.tan(math.radians(22)) - 0.2
+        bottom = chain(f"Chain_{i}", (x, y, z), 22, 0.3, IRON, root)
+        spin(f"Cage_{i}", [(0.0, -0.9), (0.42, -0.85), (0.55, -0.45), (0.5, -0.1), (0.3, 0.05), (0.0, 0.08)], IRON, segments=8, loc=(x, y, bottom), parent=root, bev=0.01)
+        spin(f"CageEmber_{i}", [(0.0, -0.75), (0.32, -0.6), (0.3, -0.3), (0.12, -0.12), (0.0, -0.1)], EMBER, segments=8, loc=(x, y, bottom), parent=root)
     export("underworld")
     render("underworld", (3, -17, 15), (math.radians(50), 0, math.radians(10)), (0.04, 0.01, 0.01))
 

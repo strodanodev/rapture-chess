@@ -13,10 +13,18 @@
   (`{ k, inputs: [alliance, horde] }`), so a relay or a LitNode ruleset can replay the same game from the seed and
   the log. The finished log is printed to the console.
 
-- **Two realms.** Alliance games play in Valhalla (stone hall, gold, aurora), Horde games in the Underworld (basalt
-  crater, lava moat); both arenas are Blender-built and chosen on the title screen.
+- **Two realms.** Alliance games play in Valhalla (stone hall, gold, aurora, shields and banners, a roof oculus), Horde
+  games in the Underworld (basalt crater, lava moat, iron chains with ember cages); both arenas are Blender-built
+  (`scripts/build-arenas.py`) and chosen on the title screen.
+- **Cinematic light.** Shadow-aware godrays from the key light ([three-good-godrays](https://github.com/Ameobea/three-good-godrays),
+  raymarched at half resolution through the shadow map, so the light streams past the champions), shafts of light falling
+  along the key light through Valhalla's roof oculus, dust (or rising embers) that glints where it crosses a shaft, and
+  ground mist round the dais (`src/scene/atmosphere.ts`); height fog that sinks the far floor into haze while pillar tops
+  stay crisp (`src/scene/heightfog.ts`); a soft pool of light on the board against a darker hall, flickering fire light
+  from the braziers and the lava, a moon, clouds and aurora (or ash lit from below) in the sky, and a per-realm colour
+  grade (lift/gamma/gain). All of it is a few draw calls and one point cloud; the quality presets thin it out on phones.
 - **60 fps by design.** Quality presets (low to ultra) and an adaptive governor that steps the pixel ratio, ambient
-  occlusion, mirror floor, shadows and anti-aliasing down whenever the frame rate dips under 58 fps.
+  occlusion, godrays, mirror floor, shadows and anti-aliasing down whenever the frame rate dips under 58 fps.
 - **A LitNode title, plug and play.** `pnpm title` bundles the rules into `rulesets/rapture-chess.v1.js` (conformant,
   hash-pinned); `gauntlets/rapture-chess.json` lets any LitNode host run the match server per placed match; the page
   seats through the arcade shell and both players sign the ledger, which the node replays and settles.
@@ -67,7 +75,7 @@ src/rules/chessRules.ts   Deckwright-style ruleset: init/step over a 32-bit acti
 src/game/                 the local match (log, bot in a worker)
 src/roster.ts             collection -> two armies (owned cards first, seeded order)
 src/web3/wallet.ts        Deckwright wallet + holdings for the Rapture collection
-src/scene/                three.js: stage (post-processing, quality governor), realm, board, pieces, VFX (three.quarks), assets
+src/scene/                three.js: stage (post-processing, godrays, light pool, fire lights, grade, quality governor), atmosphere (shafts, mist, motes), heightfog, realm, board, pieces, VFX (three.quarks), assets
 src/game/relay.ts         RelayMatch: a placed LitNode match (arcade shell seat + ledger signature) or a dev room
 src/wager/                the zkLTC wager panel; src/web3/wager.ts + canonical.ts the claim encoding
 contracts/                LitNodeWager.sol (+ vendored Ed25519, mocks, hardhat tests)

@@ -1,32 +1,77 @@
 /**
- * The stage: renderer, camera, post-processing chain (N8AO ambient occlusion, bloom, chromatic aberration,
- * vignette, ACES, SMAA), environment lighting, the sky dome and the orbit camera with board-friendly limits.
+ * The stage: renderer, camera, post-processing chain (N8AO ambient occlusion, godrays, bloom, chromatic aberration,
+ * vignette, AgX, SMAA), environment lighting, the sky dome, the atmosphere (light shafts, ground mist) and the orbit
+ * camera with board-friendly limits.
  *
  * Quality is a preset (ultra/high/medium/low) chosen by the device and then governed by the frame rate: the
  * adaptive controller steps down whenever the average dips under 58 fps and climbs back once it holds over 75.
- * Everything costly is a switch: pixel ratio, AO, the mirror floor, shadow map size, SMAA and bloom radius.
+ * Everything costly is a switch: pixel ratio, AO, godrays resolution and steps, the mirror floor, shadow map size, SMAA and bloom radius.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
-  BloomEffect, ChromaticAberrationEffect, HueSaturationEffect, NoiseEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, VignetteEffect, BlendFunction, KernelSize, ToneMappingEffect, ToneMappingMode,
+  Effect, BloomEffect, ChromaticAberrationEffect, HueSaturationEffect, NoiseEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, VignetteEffect, BlendFunction, KernelSize, ToneMappingEffect, ToneMappingMode,
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
+import { GodraysPass, GodraysUpsampleQuality } from 'three-good-godrays';
+import { Atmosphere } from './atmosphere';
+import { installHeightFog } from './heightfog';
 import { tweens } from './tween';
+
+// before any material compiles: the fog chunks gain a height term (thick on the floor, thin in the air)
+installHeightFog();
 
 export type Quality = 'ultra' | 'high' | 'medium' | 'low' | 'lite';
 export const QUALITIES: Quality[] = ['lite', 'low', 'medium', 'high', 'ultra'];
-interface Preset { pixelRatio: number; ao: boolean; aoSamples: number; mirror: number; shadow: number; smaa: boolean; bloomKernel: KernelSize; chroma: boolean }
+interface Preset {
+  pixelRatio: number; ao: boolean; aoSamples: number; mirror: number; shadow: number; smaa: boolean; bloomKernel: KernelSize; chroma: boolean;
+  /** Godrays render-target scale (0 = off) and raymarch steps per pixel. */
+  rays: number; raySteps: number;
+}
 const PRESETS: Record<Quality, Preset> = {
-  ultra: { pixelRatio: 2, ao: true, aoSamples: 16, mirror: 1024, shadow: 2048, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true },
-  high: { pixelRatio: 1.5, ao: true, aoSamples: 8, mirror: 512, shadow: 2048, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true },
-  medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false },
-  low: { pixelRatio: 1, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false },
+  ultra: { pixelRatio: 2, ao: true, aoSamples: 16, mirror: 1024, shadow: 2048, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true, rays: 0.5, raySteps: 48 },
+  high: { pixelRatio: 1.5, ao: true, aoSamples: 8, mirror: 512, shadow: 2048, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true, rays: 0.5, raySteps: 32 },
+  medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false, rays: 0.25, raySteps: 20 },
+  low: { pixelRatio: 1, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false, rays: 0, raySteps: 0 },
   // the floor for weak phone GPUs: three quarters of the CSS resolution and no shadow pass
-  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, mirror: 0, shadow: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false },
+  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, mirror: 0, shadow: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false, rays: 0, raySteps: 0 },
 };
+
+export interface RayColors { color: THREE.ColorRepresentation; density: number; maxDensity: number; distanceAttenuation: number }
+/** Fire light: warm point lights at the realm's fires (braziers, lava), flickering; how many is a quality setting. */
+export interface FireLights { color: THREE.ColorRepresentation; intensity: number; distance: number; positions: Array<[number, number, number]> }
+/** The pool: a soft spot from the key light's side that lights the board brighter than the hall (no shadow of its own). */
+export interface Pool { color: THREE.ColorRepresentation; intensity: number; angle: number }
+/** The realm's colour grade after tone mapping: lift (shadows), gamma (mids) and gain (highlights) per channel. */
+export interface Grade { lift: [number, number, number]; gamma: [number, number, number]; gain: [number, number, number] }
+/** The sky's moving parts: a moon (direction, size, colour), a cloud layer, and a glow from below (lava, fire). */
+export interface SkyExtras { moon?: { dir: [number, number, number]; color: THREE.ColorRepresentation; size: number }; clouds?: { color: THREE.ColorRepresentation; amount: number; speed: number }; underglow?: number }
+
+/** Fire lights per quality preset: each is a point light every lit fragment pays for, so phones get fewer. */
+const FIRES: Record<Quality, number> = { ultra: 4, high: 4, medium: 2, low: 0, lite: 0 };
+
+/** Lift / gamma / gain, merged into the final effect pass (no render target of its own). */
+class GradeEffect extends Effect {
+  constructor() {
+    super('GradeEffect', /* glsl */ `
+      uniform vec3 lift; uniform vec3 gammaInv; uniform vec3 gain;
+      void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+        vec3 c = inputColor.rgb * gain + lift * (1.0 - inputColor.rgb);
+        outputColor = vec4(pow(max(c, vec3(0.0)), gammaInv), inputColor.a);
+      }`, {
+      uniforms: new Map<string, THREE.Uniform>([
+        ['lift', new THREE.Uniform(new THREE.Vector3())], ['gammaInv', new THREE.Uniform(new THREE.Vector3(1, 1, 1))], ['gain', new THREE.Uniform(new THREE.Vector3(1, 1, 1))],
+      ]),
+    });
+  }
+  set(g: Grade): void {
+    (this.uniforms.get('lift')!.value as THREE.Vector3).fromArray(g.lift);
+    (this.uniforms.get('gammaInv')!.value as THREE.Vector3).set(1 / g.gamma[0], 1 / g.gamma[1], 1 / g.gamma[2]);
+    (this.uniforms.get('gain')!.value as THREE.Vector3).fromArray(g.gain);
+  }
+}
 
 export const isMobile = (): boolean => matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 820;
 
@@ -44,6 +89,14 @@ export class Stage {
   readonly accentLights: [THREE.PointLight, THREE.PointLight];
   readonly sky: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   readonly stars: THREE.Points;
+  /** Light shafts and ground mist (the cheap volumetrics; the godrays pass is the expensive one). */
+  readonly atmosphere: Atmosphere;
+  /** Warm flickering lights at the realm's fires (FireLights); FIRES[quality] of them are switched on. */
+  private readonly fireLights: THREE.PointLight[] = [];
+  private fireBase = 0;
+  /** The pool of light on the board: the cinematic contrast between the lit table and the dark hall. */
+  private readonly pool: THREE.SpotLight;
+  private readonly grade = new GradeEffect();
   quality: Quality = 'high';
   auto = true;
   fps = 60;
@@ -52,6 +105,9 @@ export class Stage {
   private readonly qualityListeners: Array<(q: Quality, fps: number) => void> = [];
   private bloom: BloomEffect;
   private ao: N8AOPostPass | null = null;
+  /** Shadow-aware volumetric rays from the key light (three-good-godrays), between AO and bloom. */
+  private godrays: GodraysPass | null = null;
+  private rays: RayColors = { color: 0xa9c6ff, density: 1 / 70, maxDensity: 0.28, distanceAttenuation: 2 };
   private smaa: SMAAEffect;
   private grain: NoiseEffect;
   /** Set false while assets load: those frames say nothing about the game's frame rate. */
@@ -106,7 +162,9 @@ export class Stage {
     this.keyLight.shadow.bias = -0.00025;
     this.keyLight.shadow.normalBias = 0.02;
     const sc = this.keyLight.shadow.camera;
-    sc.left = sc.bottom = -6.5; sc.right = sc.top = 6.5; sc.near = 2; sc.far = 30;
+    // near/far also bound the godrays raymarch slab: start it a few metres above the tallest champion so the rays live
+    // round the board instead of veiling the pillars and sky behind it
+    sc.left = sc.bottom = -6.5; sc.right = sc.top = 6.5; sc.near = 9; sc.far = 24;
     this.scene.add(this.keyLight, this.keyLight.target);
     this.rimLight = new THREE.SpotLight(0x8fb4ff, 40, 40, Math.PI / 5, 0.6, 1.4);
     this.rimLight.position.set(-6, 8, -9);
@@ -116,10 +174,20 @@ export class Stage {
     this.accentLights = [a0, a1];
     this.hemi = new THREE.HemisphereLight(0x2a2f45, 0x080608, 0.5);
     this.scene.add(a0, a1, this.hemi);
+    this.pool = new THREE.SpotLight(0xfff0d8, 0, 40, 0.42, 0.85, 1.2);
+    this.pool.position.set(5, 16, 6);
+    this.scene.add(this.pool, this.pool.target);
+    for (let i = 0; i < 4; i++) {
+      const f = new THREE.PointLight(0xff9a4a, 0, 9, 2);
+      f.visible = false;
+      this.fireLights.push(f);
+      this.scene.add(f);
+    }
 
     const { sky, stars } = this.backdrop();
     this.sky = sky; this.stars = stars;
     this.scene.add(sky, stars);
+    this.atmosphere = new Atmosphere(this.scene);
 
     // post: AO -> bloom + chroma + vignette -> ACES tone mapping + SMAA (the composer renders to a float buffer, so the
     // renderer's own tone mapping never runs: it is an effect here, after bloom reads the HDR values)
@@ -135,6 +203,12 @@ export class Stage {
       this.ao.configuration.halfRes = true;
       this.composer.addPass(this.ao);
     } catch (e) { console.warn('[chess] N8AO unavailable', e); }
+    // godrays: raymarched through the key light's shadow map at half resolution, so the rays stream past the champions
+    // and pillars and land on the board; linear output (gammaCorrection off) because the grade below does the encoding
+    try {
+      this.godrays = new GodraysPass(this.keyLight, this.camera, this.rayParams(PRESETS.high));
+      this.composer.addPass(this.godrays);
+    } catch (e) { console.warn('[chess] godrays unavailable', e); }
     // bloom only on what is really hot (fire, runes, lava, glints): a higher threshold keeps gold and marble crisp
     this.bloom = new BloomEffect({ blendFunction: BlendFunction.ADD, mipmapBlur: true, luminanceThreshold: 1.05, luminanceSmoothing: 0.25, intensity: 0.8, radius: 0.6, kernelSize: KernelSize.LARGE });
     this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0007, 0.0007), radialModulation: true, modulationOffset: 0.4 });
@@ -149,6 +223,7 @@ export class Stage {
     this.grain.blendMode.opacity.value = 0.045;
     this.composer.addPass(new EffectPass(this.camera,
       new ToneMappingEffect({ mode: ToneMappingMode.AGX }),
+      this.grade,
       new HueSaturationEffect({ saturation: 0.14 }),
       this.grain, this.smaa));
 
@@ -175,6 +250,12 @@ export class Stage {
       this.keyLight.shadow.map?.dispose();
       this.keyLight.shadow.map = null;
     }
+    if (this.godrays) {
+      this.godrays.enabled = p.rays > 0 && p.shadow > 0;
+      if (this.godrays.enabled) this.godrays.setParams(this.rayParams(p));
+    }
+    this.atmosphere.setQuality(q);
+    this.showFires();
     this.setMirror(p.mirror);
     this.resize();
     for (const fn of this.qualityListeners) fn(q, this.fps);
@@ -188,12 +269,55 @@ export class Stage {
   }
   onQuality(fn: (q: Quality, fps: number) => void): void { this.qualityListeners.push(fn); }
 
+  /** The full godrays parameter set: setParams() falls back to the library defaults for anything left out. */
+  private rayParams(p: Preset) {
+    return {
+      color: new THREE.Color(this.rays.color), density: this.rays.density, maxDensity: this.rays.maxDensity, distanceAttenuation: this.rays.distanceAttenuation,
+      raymarchSteps: Math.max(8, p.raySteps), resolutionScale: p.rays || 0.5, blur: true, gammaCorrection: false,
+      upsampleQuality: p.rays >= 0.5 ? GodraysUpsampleQuality.HIGH : GodraysUpsampleQuality.LOW,
+    };
+  }
+  /** The realm's fires: warm point lights at the braziers or over the lava; the quality decides how many burn. */
+  setFires(f: FireLights): void {
+    this.fireBase = f.intensity;
+    this.fireLights.forEach((l, i) => {
+      const at = f.positions[i];
+      l.userData.on = !!at;
+      if (at) l.position.set(...at);
+      l.color.set(f.color);
+      l.distance = f.distance;
+    });
+    this.showFires();
+  }
+  private showFires(): void {
+    // spread the ones that burn: with two of four, take every other so both sides of the board are lit
+    const n = FIRES[this.quality], step = n && n < 4 ? Math.floor(4 / n) : 1;
+    this.fireLights.forEach((l, i) => { l.visible = !!l.userData.on && i % step === 0 && i / step < n; });
+  }
+  /** The pool of light on the board, falling from the key light's side. */
+  setPool(p: Pool, keyPosition: [number, number, number]): void {
+    this.pool.color.set(p.color);
+    this.pool.intensity = p.intensity;
+    this.pool.angle = p.angle;
+    this.pool.position.set(...keyPosition).normalize().multiplyScalar(17);
+    this.pool.target.position.set(0, 0, 0);
+  }
+  /** The realm's colour grade (after tone mapping). */
+  setGrade(g: Grade): void { this.grade.set(g); }
+
+  /** The realm's rays: colour and how thick the air reads. */
+  setRays(r: RayColors): void {
+    this.rays = r;
+    if (this.godrays?.enabled) this.godrays.setParams(this.rayParams(PRESETS[this.quality]));
+  }
+
   private mirrorSize = 0;
   private floorRadius = 9.05;
   /** The realm's polished dais round the board: the mirror (high presets) or the plain plate fills this circle; 0 = none. */
   setFloorRadius(r: number): void {
     if (r === this.floorRadius) return;
     this.floorRadius = r;
+    this.atmosphere.setClearRadius(r || 5.2);
     if (r) { this.floorPlate.geometry.dispose(); this.floorPlate.geometry = new THREE.CircleGeometry(r, 64); }
     this.setMirror(this.mirrorSize);
   }
@@ -240,11 +364,25 @@ export class Stage {
       uniforms: {
         top: { value: new THREE.Color(0x05050b) }, bottom: { value: new THREE.Color(0x120d16) }, glow: { value: new THREE.Color(0x3a2a40) },
         aurora: { value: 0 }, time: { value: 0 },
+        moonDir: { value: new THREE.Vector3(0, 0.3, -1).normalize() }, moonColor: { value: new THREE.Color(0xdfe8ff) }, moonSize: { value: 0 },
+        cloudColor: { value: new THREE.Color(0x2a3550) }, clouds: { value: 0 }, cloudSpeed: { value: 0.01 }, underglow: { value: 0 },
       },
       vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: `uniform vec3 top, bottom, glow; uniform float aurora, time; varying vec3 vP;
+      fragmentShader: `uniform vec3 top, bottom, glow, moonDir, moonColor, cloudColor; uniform float aurora, time, moonSize, clouds, cloudSpeed, underglow; varying vec3 vP;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
+        float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.07 + 5.1; a *= 0.5; } return v; }
         void main(){ vec3 d = normalize(vP); float h = d.y; vec3 c = mix(bottom, top, smoothstep(-0.2, 0.6, h));
         c += glow * pow(max(0.0, 1.0 - abs(h + 0.05) * 4.0), 2.0) * 0.6;
+        // the moon: a soft disc and a wide halo (bloom picks up the disc)
+        float md = max(dot(d, moonDir), 0.0);
+        c += moonColor * (smoothstep(1.0 - moonSize * 0.0009, 1.0 - moonSize * 0.0006, md) * 2.4 + pow(md, 60.0) * 0.35 * step(0.001, moonSize));
+        // clouds: a drifting fbm layer projected on a dome, lit from the moon side and from below (lava)
+        vec2 cp = d.xz / max(0.12, h + 0.25) * 1.6 + vec2(time * cloudSpeed, time * cloudSpeed * 0.6);
+        float cl = smoothstep(0.45, 0.8, fbm(cp)) * smoothstep(-0.05, 0.25, h) * clouds;
+        vec3 lit = cloudColor * (0.6 + 0.8 * pow(md, 6.0)) + glow * underglow * (1.0 - smoothstep(0.0, 0.5, h));
+        c = mix(c, lit, cl);
         // aurora: slow green-violet curtains high in the sky (Valhalla)
         float a = atan(d.z, d.x);
         float band = sin(a * 3.0 + time * 0.15 + sin(a * 7.0 - time * 0.1) * 0.8) * 0.5 + 0.5;
@@ -268,8 +406,13 @@ export class Stage {
     return { sky, stars };
   }
 
-  setSky(c: SkyColors, aurora = 0, stars = 0.8): void {
+  setSky(c: SkyColors, aurora = 0, stars = 0.8, extras: SkyExtras = {}): void {
     const u = this.sky.material.uniforms;
+    u.moonSize.value = extras.moon?.size ?? 0;
+    if (extras.moon) { (u.moonDir.value as THREE.Vector3).fromArray(extras.moon.dir).normalize(); (u.moonColor.value as THREE.Color).set(extras.moon.color); }
+    u.clouds.value = extras.clouds?.amount ?? 0;
+    if (extras.clouds) { (u.cloudColor.value as THREE.Color).set(extras.clouds.color); u.cloudSpeed.value = extras.clouds.speed; }
+    u.underglow.value = extras.underglow ?? 0;
     (u.top.value as THREE.Color).set(c.top); (u.bottom.value as THREE.Color).set(c.bottom); (u.glow.value as THREE.Color).set(c.glow);
     u.aurora.value = aurora;
     (this.scene.fog as THREE.FogExp2).color.set(c.fog);
@@ -311,6 +454,8 @@ export class Stage {
       tweens.update(dt);
       if (this.attract) this.orbit(dt);
       else this.controls.update();
+      this.atmosphere.update(dt, t);
+      this.flicker(t);
       for (const fn of this.updaters) fn(dt, t);
       if (this.paused) return;
       const shaking = this.shakeLeft > 0;
@@ -324,6 +469,14 @@ export class Stage {
       if (shaking) this.camera.position.sub(this.shakeOffset);
       this.govern(dt);
     });
+  }
+
+  /** Fire flicker: two incommensurate sines per light, so no two lights pulse together. */
+  private flicker(t: number): void {
+    for (let i = 0; i < this.fireLights.length; i++) {
+      const l = this.fireLights[i];
+      if (l.visible) l.intensity = this.fireBase * (0.82 + 0.12 * Math.sin(t * 9.1 + i * 2.3) * Math.sin(t * 3.7 + i) + 0.06 * Math.sin(t * 23.0 + i * 5.0));
+    }
   }
 
   /** A short camera tremor (a capture lands). */
