@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { boardMaterials } from './materials';
 import { softParticleTexture } from './assets';
+import { packStatic, surfaceOf } from './packed';
 import { FILES } from '../rules/chessRules';
 
 export const squareToWorld = (sq: string, y = 0): THREE.Vector3 => new THREE.Vector3(FILES.indexOf(sq[0]) - 3.5, y, 3.5 - (Number(sq[1]) - 1));
@@ -36,7 +37,11 @@ export class BoardView {
     });
     for (const k of ['P', 'N', 'B', 'R', 'Q', 'K']) {
       const p = root.getObjectByName(`Plinth_${k}`);
-      if (p) { p.removeFromParent(); this.plinths.set(k.toLowerCase(), p); }
+      if (!p) continue;
+      p.removeFromParent();
+      // stone, gold cap and rune folded into one mesh: one draw call per plinth per pass instead of three
+      const packedPlinth = packStatic(p, (o) => surfaceOf(o.material as THREE.MeshStandardMaterial, /^Rune_/.test(o.name) ? 1 : 0));
+      this.plinths.set(k.toLowerCase(), packedPlinth ?? p);
     }
     root.getObjectByName('Plinths')?.removeFromParent();
     this.group.add(root);

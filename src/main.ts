@@ -212,10 +212,6 @@ async function tableau(advance = true): Promise<void> {
   const c = new Chess(mate.fen);
   let last: Move | null = null;
   if (mate.moves) for (const san of mate.moves.split(' ')) last = c.move(san);
-  army!.clear();
-  clearSelection();
-  mateShown = null;
-  board!.setLastMove(last?.from ?? null, last?.to ?? null);
   const champions = [0, 1].map((side) => {
     const r = buildRoster(snapshot.cards, side as Side, web3.owned, `rapture-mate:${mate.name}`);
     const at = side === 0 ? { k: 'e1', q: 'd1', r: 'a1', b: 'c1', n: 'b1', p: 'a2' } : { k: 'e8', q: 'd8', r: 'a8', b: 'c8', n: 'b8', p: 'a7' };
@@ -230,10 +226,18 @@ async function tableau(advance = true): Promise<void> {
     types[side].set(p.square, p.type);
   }
   const kingSq = [...types[c.turn() === 'w' ? 0 : 1]].find(([, t]) => t === 'k')?.[0] ?? null;
+  // the new position is built off the board and its shaders compiled in parallel while the old one still stands,
+  // then it swaps in within one frame: no empty board, no frame stalled on a compile
+  const swapped = await army!.replace(
+    [{ side: 0, roster: rosters[0], types: types[0] }, { side: 1, roster: rosters[1], types: types[1] }],
+    async (staged) => { await stage!.renderer.compileAsync(staged, stage!.camera, stage!.scene); },
+    () => my !== mateGen || !!match);
+  if (!swapped) return;
+  stage!.hold(); // the swap's uploads say nothing about the frame rate
+  clearSelection();
+  board!.setLastMove(last?.from ?? null, last?.to ?? null);
   board!.setCheck(kingSq);
   home.setMate(mate.name, mate.where, last?.san ?? 'Checkmate');
-  await Promise.all([army!.muster(0, rosters[0], types[0]), army!.muster(1, rosters[1], types[1])]);
-  if (my !== mateGen) return;
   mateShown = { king: kingSq ? army!.at(kingSq) : undefined, mater: last ? army!.at(last.to) : undefined };
   mateShown.mater?.setHighlight(true);
   pulseMate();

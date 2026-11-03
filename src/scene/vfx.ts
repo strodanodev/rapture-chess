@@ -25,18 +25,41 @@ export class VFX {
   private readonly shardGeo = new THREE.TetrahedronGeometry(0.09, 0);
   private readonly runeGeo = new THREE.PlaneGeometry(0.16, 0.16);
   private embersSystem: ParticleSystem | null = null;
-  /** Mesh particles are the expensive ones: 'low' quality keeps only the sprites. */
-  rich = true;
+  /**
+   * The one light every flash uses, always in the scene. A light added for each flash and removed after it changed the
+   * light count every lit shader is built for: each new count made every material in view compile again, a stalled
+   * frame on the menu with each check pulse (and the governor answered the stall by resizing the canvas).
+   */
+  private readonly flashLight = new THREE.PointLight(0xffffff, 0, 5, 2);
+  private flashPeak = 0;
+  private flashLeft = 0;
+  private flashSeconds = 1;
+  private richMode = true;
 
   constructor(private readonly scene: THREE.Scene) {
-    scene.add(this.batch);
+    scene.add(this.batch, this.flashLight);
     this.sprite = new THREE.MeshBasicMaterial({ map: softParticleTexture(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     this.shardDark = new THREE.MeshStandardMaterial({ color: 0x0b070e, roughness: 0.25, metalness: 0.5, emissive: 0x000000 });
     this.shardGold = new THREE.MeshStandardMaterial({ color: 0xffbf5e, roughness: 0.3, metalness: 1 });
     this.embers(new THREE.Color(0xffb070));
   }
 
-  update(dt: number): void { this.batch.update(dt); }
+  /** Mesh particles are the expensive ones: 'low' quality keeps only the sprites, and goes without the flash light. */
+  get rich(): boolean { return this.richMode; }
+  set rich(on: boolean) {
+    if (on === this.richMode) return;
+    this.richMode = on;
+    this.flashLight.visible = on; // a light count change, but only with a quality change, which rebuilds shaders anyway
+  }
+
+  update(dt: number): void {
+    this.batch.update(dt);
+    if (this.flashLeft > 0) {
+      this.flashLeft = Math.max(0, this.flashLeft - dt);
+      this.flashLight.intensity = this.flashPeak * (1 - ease.outQuad(1 - this.flashLeft / this.flashSeconds));
+    }
+  }
+
 
   private spawn(ps: ParticleSystem, at: THREE.Vector3): ParticleSystem {
     ps.emitter.position.copy(at);
@@ -217,12 +240,13 @@ export class VFX {
     this.spawn(ps, at.clone().add(new THREE.Vector3(0, 0.5, 0)));
   }
 
-  /** A brief point light pulse at a square. */
+  /** A brief point light pulse at a square (the newest flash takes the light over). */
   private flash(at: THREE.Vector3, color: THREE.Color, intensity: number, seconds: number): void {
-    const light = new THREE.PointLight(color, 0, 5, 2);
-    light.position.copy(at).y += 0.6;
-    this.scene.add(light);
-    void tweens.run(seconds, (k) => { light.intensity = intensity * 40 * (1 - k); }, ease.outQuad).then(() => this.scene.remove(light));
+    this.flashLight.position.copy(at).y += 0.6;
+    this.flashLight.color.copy(color);
+    this.flashPeak = intensity * 40;
+    this.flashSeconds = this.flashLeft = seconds;
+    this.flashLight.intensity = this.flashPeak;
   }
 
   /** An expanding ring on the floor. */

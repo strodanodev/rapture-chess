@@ -1,6 +1,7 @@
 /** Stage materials: ivory marble and obsidian squares, forged frame, Rapture gold, and the avatars' re-finish. */
 import * as THREE from 'three';
 import { marbleTexture } from './assets';
+import { packSkinned, surfaceOf } from './packed';
 
 export function boardMaterials(): Record<string, THREE.Material> {
   const marble = marbleTexture();
@@ -57,3 +58,21 @@ export function finishAvatarMaterial(m: THREE.MeshStandardMaterial, accent: THRE
     m.envMapIntensity = 0.7;
   }
 }
+
+/**
+ * Fold an avatar's opaque parts into one packed skinned mesh (one draw call per pass instead of four to seven), once
+ * per loaded file: every piece cloned from it shares the geometry. The re-finish above is baked into the vertices;
+ * glass stays a mesh of its own, since it takes the piece's element colour and blends.
+ */
+export function packAvatar(root: THREE.Object3D): void {
+  packSkinned(root, (m) => {
+    if (!(m instanceof THREE.MeshStandardMaterial) || m.transparent) return null;
+    const c = m.clone();
+    c.name = m.name;
+    finishAvatarMaterial(c, WHITE);
+    const s = surfaceOf(c);
+    c.dispose();
+    return s;
+  });
+}
+const WHITE = new THREE.Color(1, 1, 1);

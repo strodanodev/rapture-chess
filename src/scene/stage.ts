@@ -8,7 +8,7 @@
  * one-second windows. The governor's first lever is the render resolution inside the preset (no passes toggled, no
  * shaders rebuilt), the second is the preset itself; a preset it had to leave is barred for a while, so it never flaps
  * between two. Everything costly is a switch: pixel ratio, AO, godrays resolution and steps, the mirror floor, shadow
- * map size and cadence, SMAA, chroma and grain.
+ * map size and cadence, the mirror's cadence, SMAA, chroma and grain.
  *
  * Every change that resizes the canvas lands at the start of a frame, right before the draw: setSize resets the canvas
  * bitmap, and a reset canvas that reaches the compositor before the next draw is a black flash.
@@ -33,7 +33,10 @@ installHeightFog();
 export type Quality = 'ultra' | 'high' | 'medium' | 'low' | 'lite';
 export const QUALITIES: Quality[] = ['lite', 'low', 'medium', 'high', 'ultra'];
 interface Preset {
-  pixelRatio: number; ao: boolean; aoSamples: number; aoDenoise: number; mirror: number; shadow: number;
+  pixelRatio: number; ao: boolean; aoSamples: number; aoDenoise: number; mirror: number;
+  /** Re-render the mirror every n frames, on the frames between shadow updates (so the two never land together). */
+  mirrorEvery: number;
+  shadow: number;
   /** Render the shadow map every n frames (0 = no shadows). The champions idle slowly: a shadow one frame old is invisible, and the shadow pass is a whole extra scene pass. */
   shadowEvery: number;
   smaa: boolean; bloomKernel: KernelSize; chroma: boolean;
@@ -43,12 +46,12 @@ interface Preset {
 // N8AO's denoiser has a fast path for 4, 8 and 16 samples only; the pixel ratio tops out at 1.5 (2 on a retina laptop
 // is four 5760x3600 half-float targets: context loss territory, and the governor would only scale it back down)
 const PRESETS: Record<Quality, Preset> = {
-  ultra: { pixelRatio: 1.5, ao: true, aoSamples: 16, aoDenoise: 8, mirror: 1024, shadow: 2048, shadowEvery: 1, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true, rays: 0.5, raySteps: 48 },
-  high: { pixelRatio: 1.5, ao: true, aoSamples: 8, aoDenoise: 4, mirror: 512, shadow: 1024, shadowEvery: 2, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true, rays: 0.5, raySteps: 32 },
-  medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, shadow: 1024, shadowEvery: 2, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false, rays: 0.25, raySteps: 20 },
-  low: { pixelRatio: 1, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, shadow: 1024, shadowEvery: 2, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false, rays: 0, raySteps: 0 },
+  ultra: { pixelRatio: 1.5, ao: true, aoSamples: 16, aoDenoise: 8, mirror: 1024, mirrorEvery: 1, shadow: 2048, shadowEvery: 1, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true, rays: 0.5, raySteps: 48 },
+  high: { pixelRatio: 1.5, ao: true, aoSamples: 8, aoDenoise: 4, mirror: 512, mirrorEvery: 2, shadow: 1024, shadowEvery: 2, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true, rays: 0.5, raySteps: 32 },
+  medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, mirrorEvery: 0, shadow: 1024, shadowEvery: 2, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false, rays: 0.25, raySteps: 20 },
+  low: { pixelRatio: 1, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, mirrorEvery: 0, shadow: 1024, shadowEvery: 2, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false, rays: 0, raySteps: 0 },
   // the floor for weak phone GPUs: three quarters of the CSS resolution and no shadow pass
-  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, shadow: 0, shadowEvery: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false, rays: 0, raySteps: 0 },
+  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, mirrorEvery: 0, shadow: 0, shadowEvery: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false, rays: 0, raySteps: 0 },
 };
 /** Render-resolution steps inside a preset, as a share of the preset's pixel ratio: the governor's first lever. */
 const SCALES = [1, 0.85, 0.72, 0.6];
@@ -146,6 +149,9 @@ export class Stage {
   private shakeAmp = 0;
   private readonly shakeOffset = new THREE.Vector3();
   private mirror: Reflector | null = null;
+  /** This frame re-renders the mirror (Preset.mirrorEvery); a skipped frame keeps the last reflection and its projection. */
+  private mirrorDue = true;
+  private mirrorFresh = true;
   // ---- the frame loop and the governor
   private started = false;
   /** Work that must land at the start of a frame, before the draw (anything that resizes the canvas). */
@@ -163,6 +169,8 @@ export class Stage {
   private ceiling = QUALITIES.length - 1;
   private ceilingUntil = 0;
   private penaltyMs = 30_000;
+  /** Frames before this time are not judged (a scene swap is uploading). */
+  private holdUntil = 0;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
@@ -242,6 +250,12 @@ export class Stage {
       this.ao.configuration.denoiseSamples = 4;
       this.ao.configuration.denoiseRadius = 8;
       this.ao.configuration.halfRes = true;
+      // N8AO looks for transparent materials every frame and, finding any (stars, mist, shafts, glass, particles),
+      // renders the scene twice more at full resolution to keep AO off them: two scene walks, sixty draws and two
+      // full-screen depth copies a frame for a shade under a few soft glows
+      // (the library has no typed switch for the detection; it is a plain field)
+      (this.ao as unknown as { autoDetectTransparency: boolean }).autoDetectTransparency = false;
+      this.ao.configuration.transparencyAware = false;
       this.composer.addPass(this.ao);
     } catch (e) { console.warn('[chess] N8AO unavailable', e); }
     // godrays: raymarched through the key light's shadow map at half resolution, so the rays stream past the champions
@@ -294,6 +308,7 @@ export class Stage {
       this.rebindGodrays();
     }
     this.shadowDirty = true;
+    this.mirrorFresh = true;
     if (this.godrays) {
       this.godrays.enabled = p.rays > 0 && p.shadow > 0;
       if (this.godrays.enabled) this.godrays.setParams(this.rayParams(p));
@@ -400,6 +415,9 @@ export class Stage {
     this.mirror = new Reflector(new THREE.CircleGeometry(this.floorRadius, 64), { textureWidth: size, textureHeight: size, color: 0x1a1a22, clipBias: 0.003 });
     this.mirror.rotation.x = -Math.PI / 2;
     this.mirror.position.y = -0.165;
+    const reflect = this.mirror.onBeforeRender;
+    this.mirror.onBeforeRender = (...args) => { if (this.mirrorDue) reflect.apply(this.mirror, args); };
+    this.mirrorFresh = true;
     this.scene.add(this.mirror);
   }
   /** The plain floor shown when the mirror is off. */
@@ -413,7 +431,11 @@ export class Stage {
   })();
 
   // ------------------------------------------------------------------ governor
-  /** Judge the last one-second window: step the resolution, then the preset, down when the budget is blown and up when there is headroom. */
+  /**
+   * Judge the last one-second window: step the resolution, then the preset, down when the budget is blown and up when
+   * there is headroom. This runs after the frame's draw, so a step waits for the start of the next frame: a resize
+   * here would reset the canvas the browser is about to show, and that empty canvas was the menu's black flash.
+   */
   private govern(cpuMs: number): void {
     const w = this.meter.frame(cpuMs, this.gpu.poll());
     if (!w) return;
@@ -429,11 +451,11 @@ export class Stage {
     if (over) {
       this.highStreak = 0;
       // a resolution notch on the first bad second; a preset only after two in a row at the lowest resolution
-      if (++this.lowStreak >= (atFloor ? 2 : 1)) { this.lowStreak = 0; this.stepDown(); }
+      if (++this.lowStreak >= (atFloor ? 2 : 1)) { this.lowStreak = 0; this.later(() => this.stepDown()); }
     } else if (under) {
       this.lowStreak = 0;
       // resolution comes back after four good seconds, a preset after ten
-      if (++this.highStreak >= (this.scaleIndex ? 4 : 10)) { this.highStreak = 0; this.stepUp(); }
+      if (++this.highStreak >= (this.scaleIndex ? 4 : 10)) { this.highStreak = 0; this.later(() => this.stepUp()); }
     } else {
       this.lowStreak = 0;
       this.highStreak = Math.max(0, this.highStreak - 1);
@@ -578,7 +600,7 @@ export class Stage {
       for (const fn of this.updaters) fn(dt, t);
       if (this.paused && !this.needsPaint) { this.meter.reset(); return; }
       this.draw(dt);
-      if (this.paused) this.meter.reset();
+      if (this.paused || performance.now() < this.holdUntil) this.meter.reset();
       else this.govern(performance.now() - t0);
     });
   }
@@ -590,6 +612,9 @@ export class Stage {
     this.frame++;
     this.renderer.shadowMap.needsUpdate = every > 0 && (this.shadowDirty || this.frame % every === 0);
     this.shadowDirty = false;
+    const mirrorEvery = PRESETS[this.quality].mirrorEvery;
+    this.mirrorDue = mirrorEvery <= 1 || this.mirrorFresh || this.frame % mirrorEvery === 1;
+    this.mirrorFresh = false;
     const shaking = this.shakeLeft > 0;
     if (shaking) {
       this.shakeLeft -= dt;
@@ -602,6 +627,9 @@ export class Stage {
     this.gpu.end();
     if (shaking) this.camera.position.sub(this.shakeOffset);
   }
+
+  /** Leave the next `ms` of frames out of the governor's windows: the scene just changed and its first frames upload. */
+  hold(ms = 1500): void { this.holdUntil = performance.now() + ms; this.meter.reset(); }
 
   /** Draw one frame now, even under an opaque screen: compiles every program a match needs (shadow and post variants included) while the versus screen still covers the canvas. */
   warm(): void { if (this.started) this.draw(0); }
@@ -630,6 +658,7 @@ export class Stage {
   setAttract(on: boolean): void {
     this.attract = on;
     this.controls.enabled = !on;
+    this.mirrorFresh = true;
     this.resize();
     if (on) this.attractAngle = Math.atan2(this.camera.position.x, this.camera.position.z);
   }

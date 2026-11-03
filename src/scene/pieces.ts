@@ -10,7 +10,8 @@ import type { Card } from '../roster';
 import { ELEMENT_COLOR } from '../roster';
 import type { PieceType, Side } from '../rules/chessRules';
 import { loadAvatar } from './assets';
-import { finishAvatarMaterial } from './materials';
+import { finishAvatarMaterial, packAvatar } from './materials';
+import { isPacked, type PackedMaterial } from './packed';
 import { squareToWorld } from './board';
 import { tweens, ease, wait } from './tween';
 import type { VFX } from './vfx';
@@ -20,6 +21,9 @@ const PLINTH_TOP: Record<PieceType, number> = { p: 0.1, n: 0.175, b: 0.21, r: 0.
 /** Blender characters face -Y, which glTF turns into +Z: White (on +Z) turns around to face the Horde. */
 const FACING: Record<Side, number> = { 0: Math.PI, 1: 0 };
 
+/** Avatar files already packed (once per file: every piece cloned from it shares the packed geometry). */
+const packed = new WeakSet<object>();
+
 export class PieceView {
   readonly group = new THREE.Group();
   readonly pick: THREE.Mesh;
@@ -28,7 +32,11 @@ export class PieceView {
   private mixer: THREE.AnimationMixer | null = null;
   private clips = new Map<string, THREE.AnimationAction>();
   private plinth: THREE.Object3D | null = null;
-  private rune: THREE.MeshStandardMaterial | null = null;
+  /** This piece's own copy of the packed plinth material: its rune burns in the champion's element. */
+  private plinthMat: PackedMaterial | null = null;
+  /** The rune's brightness; it breathes unless the piece is highlighted or falling. */
+  private runeLevel = 1.6;
+  private runeHeld = false;
   private materials: THREE.Material[] = [];
   private idlePhase = Math.random() * 10;
   public square: string;
@@ -47,39 +55,44 @@ export class PieceView {
 
   private setPlinth(type: PieceType): void {
     if (this.plinth) this.group.remove(this.plinth);
-    const src = this.plinths.get(type);
+    const src = this.plinths.get(type) as THREE.Mesh | undefined;
     if (!src) return;
-    this.plinth = src.clone(true);
-    this.plinth.position.set(0, 0, 0);
-    this.plinth.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return;
-      o.castShadow = o.receiveShadow = true;
-      if (/^Rune_/.test(o.name)) {
-        this.rune = (o.material as THREE.MeshStandardMaterial).clone();
-        this.rune.emissive.copy(this.color);
-        this.rune.emissiveIntensity = 1.6;
-        o.material = this.rune;
-      }
-    });
-    this.group.add(this.plinth);
+    // the plinth is one packed mesh (stone, gold cap, rune): share its geometry, own the material for the rune colour
+    const plinth = src.clone(true);
+    plinth.position.set(0, 0, 0);
+    plinth.castShadow = plinth.receiveShadow = true;
+    this.plinthMat?.dispose();
+    this.plinthMat = isPacked(src.material as THREE.Material) ? (src.material as PackedMaterial).clone() : null;
+    if (this.plinthMat) plinth.material = this.plinthMat;
+    this.plinth = plinth;
+    this.glow(this.runeLevel);
+    this.group.add(plinth);
     this.type = type;
     if (this.avatar) this.fitAvatar();
+  }
+
+  /** Set the rune ring's brightness (the element colour times `level`). */
+  private glow(level: number): void {
+    this.runeLevel = level;
+    this.plinthMat?.rune.value.copy(this.color).multiplyScalar(level);
   }
 
   async load(): Promise<void> {
     const gltf = await loadAvatar(this.card.slug).catch(() => null);
     if (!gltf) return;
+    if (!packed.has(gltf)) { packAvatar(gltf.scene); packed.add(gltf); }
     const root = SkeletonUtils.clone(gltf.scene);
     this.materials = [];
     root.traverse((o) => {
       if (!(o instanceof THREE.Mesh)) return;
       o.frustumCulled = false; // skinned + quantized bounds are unreliable
       o.castShadow = true;
+      // the packed body is already finished (its surface is in the vertices): a plain copy, for this piece's fade
       const mats = ([] as THREE.Material[]).concat(o.material).map((m) => {
         const c = (m as THREE.MeshStandardMaterial).clone();
         c.name = m.name;
         c.userData = {};
-        if (c instanceof THREE.MeshStandardMaterial) finishAvatarMaterial(c, this.color);
+        if (c instanceof THREE.MeshStandardMaterial && !isPacked(c)) finishAvatarMaterial(c, this.color);
         return c;
       });
       o.material = mats.length === 1 ? mats[0] : mats;
@@ -127,7 +140,7 @@ export class PieceView {
     return seconds;
   }
 
-  setHighlight(on: boolean): void { if (this.rune) this.rune.emissiveIntensity = on ? 4.5 : 1.6; }
+  setHighlight(on: boolean): void { this.runeHeld = on; this.glow(on ? 4.5 : 1.6); }
 
   /** The point just over the champion's head, in world space: where its role mark hangs. */
   crown(target: THREE.Vector3): THREE.Vector3 {
@@ -137,7 +150,7 @@ export class PieceView {
 
   update(dt: number, t: number): void {
     this.mixer?.update(dt);
-    if (this.rune && this.rune.emissiveIntensity <= 1.6) this.rune.emissiveIntensity = 1.4 + 0.35 * Math.sin(t * 2.2 + this.idlePhase);
+    if (!this.runeHeld) this.glow(1.4 + 0.35 * Math.sin(t * 2.2 + this.idlePhase));
   }
 
   /** Glide to a square along an arc (knights leap higher). */
@@ -161,10 +174,11 @@ export class PieceView {
     await wait(0.25);
     vfx.burst(this.group.position, this.color, this.side === 0);
     this.play('death', 2.2);
+    this.runeHeld = true;
     for (const m of this.materials) { m.transparent = true; m.depthWrite = false; }
     await tweens.run(0.7, (k) => {
       for (const m of this.materials) (m as THREE.MeshStandardMaterial).opacity = 1 - k;
-      if (this.rune) this.rune.emissiveIntensity = 6 * (1 - k);
+      this.glow(6 * (1 - k));
       this.group.position.y = -0.25 * k;
       this.group.scale.setScalar(1 - 0.15 * k);
     }, ease.inOutCubic);
@@ -184,6 +198,7 @@ export class PieceView {
   dispose(): void {
     this.group.removeFromParent();
     for (const m of this.materials) m.dispose();
+    this.plinthMat?.dispose();
     this.mixer?.stopAllAction();
   }
 }
@@ -204,6 +219,27 @@ export class Army {
       loads.push(p.load());
     }
     await Promise.all(loads);
+  }
+
+  /**
+   * Replace every piece with a new set, built off the board: the avatars load and `ready` prepares them (compiles their
+   * shaders) while the old pieces stand, then the swap happens in one frame. The old materials are freed only after
+   * the new ones hold their programs, so no program is thrown away and rebuilt. Builds nothing if `stale()` turns true.
+   */
+  async replace(sides: Array<{ side: Side; roster: Map<string, Card>; types: Map<string, PieceType> }>, ready: (staged: THREE.Object3D) => Promise<void>, stale: () => boolean): Promise<boolean> {
+    const staged = new THREE.Group();
+    const next = new Map<string, PieceView>();
+    for (const { side, roster, types } of sides) for (const [sq, card] of roster) {
+      const p = new PieceView(card, types.get(sq) ?? 'p', side, sq, this.plinths);
+      next.set(sq, p);
+      staged.add(p.group);
+    }
+    await Promise.all([...next.values()].map((p) => p.load()));
+    if (!stale()) await ready(staged);
+    if (stale()) { for (const p of next.values()) p.dispose(); return false; }
+    this.clear();
+    for (const [sq, p] of next) { this.pieces.set(sq, p); this.group.add(p.group); }
+    return true;
   }
 
   at(square: string): PieceView | undefined { return this.pieces.get(square); }
