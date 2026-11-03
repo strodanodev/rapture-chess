@@ -23,8 +23,10 @@
   stay crisp (`src/scene/heightfog.ts`); a soft pool of light on the board against a darker hall, flickering fire light
   from the braziers and the lava, a moon, clouds and aurora (or ash lit from below) in the sky, and a per-realm colour
   grade (lift/gamma/gain). All of it is a few draw calls and one point cloud; the quality presets thin it out on phones.
-- **60 fps by design.** Quality presets (low to ultra) and an adaptive governor that steps the pixel ratio, ambient
-  occlusion, godrays, mirror floor, shadows and anti-aliasing down whenever the frame rate dips under 58 fps.
+- **60 fps by design.** Quality presets (lite to ultra) and a governor that measures each frame (main-thread time, GPU
+  time through timer queries, frame rate) and holds 60: it lowers the render resolution first, then the preset (pixel
+  ratio, ambient occlusion, godrays, mirror floor, shadow size and cadence, anti-aliasing), and climbs back when there
+  is headroom, never flapping between two presets.
 - **A LitNode title, plug and play.** `pnpm title` bundles the rules into `rulesets/rapture-chess.v1.js` (conformant,
   hash-pinned); `gauntlets/rapture-chess.json` lets any LitNode host run the match server per placed match; the page
   seats through the arcade shell and both players sign the ledger, which the node replays and settles.

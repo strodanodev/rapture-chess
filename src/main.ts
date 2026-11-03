@@ -179,7 +179,7 @@ async function ensureStage(): Promise<void> {
     board!.update(dt); army!.update(dt, t); vfx!.update(dt); realm!.update(dt, t); tickClock();
     marks!.update(army!.pieces.values(), !!match && !stage!.attract && currentScreen() === 'match', dt);
   });
-  stage.onQuality((q, fps) => { hud.setFps(fps, q); vfx!.rich = q !== 'low' && q !== 'lite'; });
+  stage.onQuality((q, fps, scale) => { hud.setFps(fps, scale < 1 ? `${q} ${Math.round(scale * 100)}%` : q); vfx!.rich = q !== 'low' && q !== 'lite'; });
   canvas.addEventListener('pointerdown', onPointerDown);
   stage.controls.addEventListener('end', () => layoutHud()); // the player orbited the board: re-fit the phone HUD
   canvas.addEventListener('pointermove', onPointerMove);
@@ -287,7 +287,10 @@ async function prepare(side: Side, seed: string, owned: Set<string>, names: [str
   await preloadAvatars(slugs, (done, total) => versus.progress(0.12 + 0.8 * (done / total), `Summoning champions ${done}/${total}`));
   await army!.muster(0, rosters[0], startSquares);
   await army!.muster(1, rosters[1], startSquares);
-  stage!.renderer.compile(stage!.scene, stage!.camera); // compile the avatars' shaders now, not on the first visible frame
+  // compile the avatars' shaders now (in parallel where the driver allows), then draw one frame under the versus
+  // screen so the shadow and post variants are built too: nothing compiles on the first visible frame
+  await stage!.renderer.compileAsync(stage!.scene, stage!.camera);
+  stage!.warm();
   versus.progress(1, 'To battle');
   hud.setPlayers(side, names, subs, relay);
   hud.setMoves([]);

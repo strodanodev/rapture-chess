@@ -3,9 +3,15 @@
  * vignette, AgX, SMAA), environment lighting, the sky dome, the atmosphere (light shafts, ground mist) and the orbit
  * camera with board-friendly limits.
  *
- * Quality is a preset (ultra/high/medium/low) chosen by the device and then governed by the frame rate: the
- * adaptive controller steps down whenever the average dips under 58 fps and climbs back once it holds over 75.
- * Everything costly is a switch: pixel ratio, AO, godrays resolution and steps, the mirror floor, shadow map size, SMAA and bloom radius.
+ * Quality is a preset (ultra/high/medium/low/lite) chosen by the device and then governed by measured frame cost: the
+ * main-thread time of each frame, the GPU time (timer queries, where the browser has them) and the frame rate, over
+ * one-second windows. The governor's first lever is the render resolution inside the preset (no passes toggled, no
+ * shaders rebuilt), the second is the preset itself; a preset it had to leave is barred for a while, so it never flaps
+ * between two. Everything costly is a switch: pixel ratio, AO, godrays resolution and steps, the mirror floor, shadow
+ * map size and cadence, SMAA, chroma and grain.
+ *
+ * Every change that resizes the canvas lands at the start of a frame, right before the draw: setSize resets the canvas
+ * bitmap, and a reset canvas that reaches the compositor before the next draw is a black flash.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -17,6 +23,7 @@ import {
 import { N8AOPostPass } from 'n8ao';
 import { GodraysPass, GodraysUpsampleQuality } from 'three-good-godrays';
 import { Atmosphere } from './atmosphere';
+import { FrameMeter, GpuTimer } from './frametimer';
 import { installHeightFog } from './heightfog';
 import { tweens } from './tween';
 
@@ -26,18 +33,29 @@ installHeightFog();
 export type Quality = 'ultra' | 'high' | 'medium' | 'low' | 'lite';
 export const QUALITIES: Quality[] = ['lite', 'low', 'medium', 'high', 'ultra'];
 interface Preset {
-  pixelRatio: number; ao: boolean; aoSamples: number; mirror: number; shadow: number; smaa: boolean; bloomKernel: KernelSize; chroma: boolean;
+  pixelRatio: number; ao: boolean; aoSamples: number; aoDenoise: number; mirror: number; shadow: number;
+  /** Render the shadow map every n frames (0 = no shadows). The champions idle slowly: a shadow one frame old is invisible, and the shadow pass is a whole extra scene pass. */
+  shadowEvery: number;
+  smaa: boolean; bloomKernel: KernelSize; chroma: boolean;
   /** Godrays render-target scale (0 = off) and raymarch steps per pixel. */
   rays: number; raySteps: number;
 }
+// N8AO's denoiser has a fast path for 4, 8 and 16 samples only; the pixel ratio tops out at 1.5 (2 on a retina laptop
+// is four 5760x3600 half-float targets: context loss territory, and the governor would only scale it back down)
 const PRESETS: Record<Quality, Preset> = {
-  ultra: { pixelRatio: 2, ao: true, aoSamples: 16, mirror: 1024, shadow: 2048, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true, rays: 0.5, raySteps: 48 },
-  high: { pixelRatio: 1.5, ao: true, aoSamples: 8, mirror: 512, shadow: 2048, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true, rays: 0.5, raySteps: 32 },
-  medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false, rays: 0.25, raySteps: 20 },
-  low: { pixelRatio: 1, ao: false, aoSamples: 8, mirror: 0, shadow: 1024, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false, rays: 0, raySteps: 0 },
+  ultra: { pixelRatio: 1.5, ao: true, aoSamples: 16, aoDenoise: 8, mirror: 1024, shadow: 2048, shadowEvery: 1, smaa: true, bloomKernel: KernelSize.LARGE, chroma: true, rays: 0.5, raySteps: 48 },
+  high: { pixelRatio: 1.5, ao: true, aoSamples: 8, aoDenoise: 4, mirror: 512, shadow: 1024, shadowEvery: 2, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: true, rays: 0.5, raySteps: 32 },
+  medium: { pixelRatio: 1.25, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, shadow: 1024, shadowEvery: 2, smaa: true, bloomKernel: KernelSize.MEDIUM, chroma: false, rays: 0.25, raySteps: 20 },
+  low: { pixelRatio: 1, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, shadow: 1024, shadowEvery: 2, smaa: false, bloomKernel: KernelSize.SMALL, chroma: false, rays: 0, raySteps: 0 },
   // the floor for weak phone GPUs: three quarters of the CSS resolution and no shadow pass
-  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, mirror: 0, shadow: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false, rays: 0, raySteps: 0 },
+  lite: { pixelRatio: 0.75, ao: false, aoSamples: 8, aoDenoise: 4, mirror: 0, shadow: 0, shadowEvery: 0, smaa: false, bloomKernel: KernelSize.VERY_SMALL, chroma: false, rays: 0, raySteps: 0 },
 };
+/** Render-resolution steps inside a preset, as a share of the preset's pixel ratio: the governor's first lever. */
+const SCALES = [1, 0.85, 0.72, 0.6];
+/** The frame budget the governor holds: 60 fps. */
+const BUDGET_MS = 1000 / 60;
+const CHROMA_OFFSET = 0.0007;
+const GRAIN_OPACITY = 0.045;
 
 export interface RayColors { color: THREE.ColorRepresentation; density: number; maxDensity: number; distanceAttenuation: number }
 /** Fire light: warm point lights at the realm's fires (braziers, lava), flickering; how many is a quality setting. */
@@ -77,6 +95,9 @@ export const isMobile = (): boolean => matchMedia('(pointer: coarse)').matches |
 
 export interface SkyColors { top: THREE.ColorRepresentation; bottom: THREE.ColorRepresentation; glow: THREE.ColorRepresentation; fog: THREE.ColorRepresentation; fogDensity: number }
 
+/** The godrays pass binds the key light's shadow map once and keeps it; these are the fields that make it look again. */
+interface GodraysIllum { shadowMapSet: boolean; needsDepthCopy: boolean; depthCopyTarget: { dispose(): void } | null }
+
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -102,14 +123,18 @@ export class Stage {
   fps = 60;
   private readonly timer = new THREE.Timer();
   private readonly updaters: Array<(dt: number, t: number) => void> = [];
-  private readonly qualityListeners: Array<(q: Quality, fps: number) => void> = [];
+  private readonly qualityListeners: Array<(q: Quality, fps: number, scale: number) => void> = [];
   private bloom: BloomEffect;
   private ao: N8AOPostPass | null = null;
   /** Shadow-aware volumetric rays from the key light (three-good-godrays), between AO and bloom. */
   private godrays: GodraysPass | null = null;
   private rays: RayColors = { color: 0xa9c6ff, density: 1 / 70, maxDensity: 0.28, distanceAttenuation: 2 };
-  private smaa: SMAAEffect;
+  private chroma: ChromaticAberrationEffect;
   private grain: NoiseEffect;
+  /** Tone mapping, grade, saturation and grain; draws to the screen unless SMAA follows it. */
+  private readonly finalPass: EffectPass;
+  /** SMAA after tone mapping, its own pass so a preset can switch it off without rebuilding the final pass's shader. */
+  private readonly smaaPass: EffectPass;
   /** Set false while assets load: those frames say nothing about the game's frame rate. */
   governing = true;
   /** An opaque menu covers the canvas: skip drawing (the clocks and tweens keep running). */
@@ -120,12 +145,24 @@ export class Stage {
   private shakeLeft = 0;
   private shakeAmp = 0;
   private readonly shakeOffset = new THREE.Vector3();
-  private chroma: ChromaticAberrationEffect;
   private mirror: Reflector | null = null;
-  private frames = 0;
-  private sampleTime = 0;
+  // ---- the frame loop and the governor
+  private started = false;
+  /** Work that must land at the start of a frame, before the draw (anything that resizes the canvas). */
+  private readonly pending: Array<() => void> = [];
+  /** The canvas was reset (resized): draw once even under an opaque screen, so nothing black is ever uncovered. */
+  private needsPaint = false;
+  private frame = 0;
+  private shadowDirty = true;
+  private readonly gpu: GpuTimer;
+  private readonly meter = new FrameMeter();
+  private scaleIndex = 0;
   private lowStreak = 0;
   private highStreak = 0;
+  /** The preset the governor last had to leave, barred until `ceilingUntil`; the bar doubles each time it falls again. */
+  private ceiling = QUALITIES.length - 1;
+  private ceilingUntil = 0;
+  private penaltyMs = 30_000;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
@@ -133,6 +170,8 @@ export class Stage {
     this.renderer.toneMapping = THREE.NoToneMapping; // applied as a post effect, see below
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false; // the draw decides each frame (Preset.shadowEvery)
+    this.gpu = new GpuTimer(this.renderer);
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 160);
     this.camera.position.set(0, 9.5, 11.5);
@@ -189,8 +228,10 @@ export class Stage {
     this.scene.add(sky, stars);
     this.atmosphere = new Atmosphere(this.scene);
 
-    // post: AO -> bloom + chroma + vignette -> ACES tone mapping + SMAA (the composer renders to a float buffer, so the
-    // renderer's own tone mapping never runs: it is an effect here, after bloom reads the HDR values)
+    // post: AO -> godrays -> bloom + chroma + vignette -> AgX tone mapping + grade + grain -> SMAA (the composer renders
+    // to a float buffer, so the renderer's own tone mapping never runs: it is an effect here, after bloom reads the HDR
+    // values). Presets switch passes on and off and set uniforms; they never change blend functions, which would
+    // rebuild a pass's shader (a second-long hitch and a black frame on every quality step).
     this.composer = new EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     try {
@@ -198,7 +239,7 @@ export class Stage {
       this.ao.configuration.aoRadius = 1.2;
       this.ao.configuration.distanceFalloff = 1.0;
       this.ao.configuration.intensity = 2.4;
-      this.ao.configuration.denoiseSamples = 6;
+      this.ao.configuration.denoiseSamples = 4;
       this.ao.configuration.denoiseRadius = 8;
       this.ao.configuration.halfRes = true;
       this.composer.addPass(this.ao);
@@ -211,21 +252,18 @@ export class Stage {
     } catch (e) { console.warn('[chess] godrays unavailable', e); }
     // bloom only on what is really hot (fire, runes, lava, glints): a higher threshold keeps gold and marble crisp
     this.bloom = new BloomEffect({ blendFunction: BlendFunction.ADD, mipmapBlur: true, luminanceThreshold: 1.05, luminanceSmoothing: 0.25, intensity: 0.8, radius: 0.6, kernelSize: KernelSize.LARGE });
-    this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0007, 0.0007), radialModulation: true, modulationOffset: 0.4 });
+    this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(CHROMA_OFFSET, CHROMA_OFFSET), radialModulation: true, modulationOffset: 0.4 });
     const vignette = new VignetteEffect({ eskil: false, offset: 0.3, darkness: 0.68 });
     this.composer.addPass(new EffectPass(this.camera, this.bloom, this.chroma, vignette));
-    // the grade, all merged into the one final pass (no extra render targets): AgX keeps bright gold and fire in colour
-    // where ACES burned them to white, a little saturation back, and a faint film grain. (BrightnessContrastEffect is
-    // left out on purpose: in this chain it lifted the dark sky into grey blotches.) The last pass
-    // is the one that draws to the screen, so it is never disabled: SMAA and the grain are skipped inside it instead.
-    this.smaa = new SMAAEffect({ preset: SMAAPreset.MEDIUM });
+    // the grade, all merged into one pass (no extra render targets): AgX keeps bright gold and fire in colour where
+    // ACES burned them to white, a little saturation back, and a faint film grain. (BrightnessContrastEffect is left
+    // out on purpose: in this chain it lifted the dark sky into grey blotches.)
     this.grain = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
-    this.grain.blendMode.opacity.value = 0.045;
-    this.composer.addPass(new EffectPass(this.camera,
-      new ToneMappingEffect({ mode: ToneMappingMode.AGX }),
-      this.grade,
-      new HueSaturationEffect({ saturation: 0.14 }),
-      this.grain, this.smaa));
+    this.grain.blendMode.opacity.value = GRAIN_OPACITY;
+    this.finalPass = new EffectPass(this.camera, new ToneMappingEffect({ mode: ToneMappingMode.AGX }), this.grade, new HueSaturationEffect({ saturation: 0.14 }), this.grain);
+    this.composer.addPass(this.finalPass);
+    this.smaaPass = new EffectPass(this.camera, new SMAAEffect({ preset: SMAAPreset.MEDIUM }));
+    this.composer.addPass(this.smaaPass);
 
     const saved = localStorage.getItem('rapture-chess.quality') as Quality | 'auto' | null;
     this.auto = !saved || saved === 'auto';
@@ -235,39 +273,71 @@ export class Stage {
   }
 
   // ------------------------------------------------------------------ quality
-  setQuality(q: Quality): void {
+  /** Apply a preset now, at `scale` (an index into SCALES). From outside the frame loop, prefer choose(). */
+  setQuality(q: Quality, scale = 0): void {
     const p = PRESETS[q];
     this.quality = q;
-    this.renderer.setPixelRatio(p.pixelRatio < 1 ? p.pixelRatio : Math.min(window.devicePixelRatio, p.pixelRatio));
-    if (this.ao) { this.ao.enabled = p.ao; this.ao.configuration.aoSamples = p.aoSamples; }
-    this.smaa.blendMode.setBlendFunction(p.smaa ? BlendFunction.NORMAL : BlendFunction.SKIP);
+    this.scaleIndex = Math.min(scale, SCALES.length - 1);
+    if (this.ao) { this.ao.enabled = p.ao; this.ao.configuration.aoSamples = p.aoSamples; this.ao.configuration.denoiseSamples = p.aoDenoise; }
+    // SMAA is its own pass: when it is off, the final pass is the one that draws to the screen
+    this.smaaPass.enabled = p.smaa;
+    this.smaaPass.renderToScreen = p.smaa;
+    this.finalPass.renderToScreen = !p.smaa;
     this.bloom.kernelSize = p.bloomKernel;
-    this.chroma.blendMode.setBlendFunction(p.chroma ? BlendFunction.NORMAL : BlendFunction.SKIP);
-    this.grain.blendMode.setBlendFunction(p.chroma ? BlendFunction.OVERLAY : BlendFunction.SKIP);
+    this.chroma.offset.set(p.chroma ? CHROMA_OFFSET : 0, p.chroma ? CHROMA_OFFSET : 0);
+    this.grain.blendMode.opacity.value = p.chroma ? GRAIN_OPACITY : 0;
     this.keyLight.castShadow = p.shadow > 0;
     if (p.shadow && this.keyLight.shadow.mapSize.x !== p.shadow) {
       this.keyLight.shadow.mapSize.set(p.shadow, p.shadow);
       this.keyLight.shadow.map?.dispose();
       this.keyLight.shadow.map = null;
+      this.rebindGodrays();
     }
+    this.shadowDirty = true;
     if (this.godrays) {
       this.godrays.enabled = p.rays > 0 && p.shadow > 0;
       if (this.godrays.enabled) this.godrays.setParams(this.rayParams(p));
     }
     this.atmosphere.setQuality(q);
     this.showFires();
-    this.setMirror(p.mirror);
-    this.resize();
-    for (const fn of this.qualityListeners) fn(q, this.fps);
+    if (p.mirror !== this.mirrorSize) this.setMirror(p.mirror);
+    this.applyResolution();
+    for (const fn of this.qualityListeners) fn(q, this.fps, this.scale);
   }
-  /** Pick a fixed preset, or 'auto' to let the frame rate decide. */
+  /** Pick a fixed preset, or 'auto' to let the frame cost decide. */
   choose(q: Quality | 'auto'): void {
     this.auto = q === 'auto';
     localStorage.setItem('rapture-chess.quality', q);
     this.lowStreak = this.highStreak = 0;
-    if (q !== 'auto') this.setQuality(q);
+    this.ceilingUntil = 0;
+    if (q !== 'auto') this.later(() => this.setQuality(q));
+    else if (this.scaleIndex) this.later(() => this.setQuality(this.quality));
   }
-  onQuality(fn: (q: Quality, fps: number) => void): void { this.qualityListeners.push(fn); }
+  onQuality(fn: (q: Quality, fps: number, scale: number) => void): void { this.qualityListeners.push(fn); }
+  /** The render resolution as a share of the preset's: 1 at full, down to 0.6 when the governor is holding 60 fps. */
+  get scale(): number { return SCALES[this.scaleIndex]; }
+
+  /** The preset's pixel ratio times the governor's scale, then the composer's targets to match. */
+  private applyResolution(): void {
+    const p = PRESETS[this.quality];
+    const base = p.pixelRatio < 1 ? p.pixelRatio : Math.min(window.devicePixelRatio, p.pixelRatio);
+    this.renderer.setPixelRatio(base * SCALES[this.scaleIndex]); // resets the canvas bitmap: callers paint in the same task
+    this.fit(true);
+  }
+  /** Run `fn` at the start of the next frame (before the draw), or now if the loop is not running yet. */
+  private later(fn: () => void): void {
+    if (this.started) this.pending.push(fn);
+    else fn();
+  }
+  /** The shadow map was rebuilt at a new size: the godrays pass bound the old texture once and keeps it, so make it look again. */
+  private rebindGodrays(): void {
+    const illum = (this.godrays as unknown as { illumPass?: GodraysIllum } | null)?.illumPass;
+    if (!illum) return;
+    illum.depthCopyTarget?.dispose();
+    illum.depthCopyTarget = null;
+    illum.needsDepthCopy = false;
+    illum.shadowMapSet = false;
+  }
 
   /** The full godrays parameter set: setParams() falls back to the library defaults for anything left out. */
   private rayParams(p: Preset) {
@@ -342,18 +412,49 @@ export class Stage {
     return m;
   })();
 
-  private govern(dt: number): void {
-    this.frames++;
-    this.sampleTime += dt;
-    if (this.sampleTime < 1.5) return;
-    this.fps = this.frames / this.sampleTime;
-    this.frames = 0; this.sampleTime = 0;
-    for (const fn of this.qualityListeners) fn(this.quality, this.fps);
+  // ------------------------------------------------------------------ governor
+  /** Judge the last one-second window: step the resolution, then the preset, down when the budget is blown and up when there is headroom. */
+  private govern(cpuMs: number): void {
+    const w = this.meter.frame(cpuMs, this.gpu.poll());
+    if (!w) return;
+    this.fps = w.fps;
+    for (const fn of this.qualityListeners) fn(this.quality, this.fps, this.scale);
     if (!this.auto || !this.governing || document.hidden) { this.lowStreak = this.highStreak = 0; return; }
+    // the slower side of the frame; the GPU figure is 0 where the browser has no timer queries, and then only the
+    // frame rate can say it is over (which, with vsync, it does)
+    const load = Math.max(w.cpu, w.gpu);
+    const over = w.fps < 57 || load > BUDGET_MS * 0.95;
+    const under = w.fps >= 59 && load < BUDGET_MS * 0.62;
+    const atFloor = this.scaleIndex === SCALES.length - 1;
+    if (over) {
+      this.highStreak = 0;
+      // a resolution notch on the first bad second; a preset only after two in a row at the lowest resolution
+      if (++this.lowStreak >= (atFloor ? 2 : 1)) { this.lowStreak = 0; this.stepDown(); }
+    } else if (under) {
+      this.lowStreak = 0;
+      // resolution comes back after four good seconds, a preset after ten
+      if (++this.highStreak >= (this.scaleIndex ? 4 : 10)) { this.highStreak = 0; this.stepUp(); }
+    } else {
+      this.lowStreak = 0;
+      this.highStreak = Math.max(0, this.highStreak - 1);
+    }
+  }
+  private stepDown(): void {
     const i = QUALITIES.indexOf(this.quality);
-    if (this.fps < 58) { this.highStreak = 0; if (++this.lowStreak >= 2 && i > 0) { this.lowStreak = 0; this.setQuality(QUALITIES[i - 1]); } }
-    else if (this.fps > 75) { this.lowStreak = 0; if (++this.highStreak >= 6 && i < QUALITIES.length - 1) { this.highStreak = 0; this.setQuality(QUALITIES[i + 1]); } }
-    else { this.lowStreak = 0; this.highStreak = 0; }
+    if (this.scaleIndex < SCALES.length - 1) { this.scaleIndex++; this.applyResolution(); return; }
+    if (i === 0) return;
+    // bar the preset we are leaving, for longer each time it fails
+    this.ceiling = i;
+    this.ceilingUntil = performance.now() + this.penaltyMs;
+    this.penaltyMs = Math.min(this.penaltyMs * 2, 240_000);
+    this.setQuality(QUALITIES[i - 1], 1);
+  }
+  private stepUp(): void {
+    const i = QUALITIES.indexOf(this.quality);
+    if (this.scaleIndex > 0) { this.scaleIndex--; this.applyResolution(); return; }
+    if (i >= QUALITIES.length - 1) return;
+    if (i + 1 >= this.ceiling && performance.now() < this.ceilingUntil) return;
+    this.setQuality(QUALITIES[i + 1], 1); // arrive a notch under full resolution and earn the rest
   }
 
   // ------------------------------------------------------------------ sky
@@ -429,10 +530,24 @@ export class Stage {
 
   onUpdate(fn: (dt: number, t: number) => void): void { this.updaters.push(fn); }
 
-  resize(): void {
+  // ------------------------------------------------------------------ size and the frame loop
+  resize(): void { this.fit(false); }
+
+  /**
+   * Size the drawing buffer and the camera to the canvas. setSize resets the canvas bitmap even at the same size, and a
+   * reset bitmap composited before the next draw is a black flash: the buffer is only touched when its size really
+   * changes (or `force`, after a pixel-ratio change has already reset it), and a draw is owed right after.
+   */
+  private fit(force: boolean): void {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.composer.setSize(w, h);
+    if (!w || !h) return; // a hidden or collapsed window: zero-size render targets only raise GL errors; keep the last good size
+    const pr = this.renderer.getPixelRatio();
+    if (force || this.canvas.width !== Math.floor(w * pr) || this.canvas.height !== Math.floor(h * pr)) {
+      this.renderer.setSize(w, h, false);
+      this.composer.setSize(w, h);
+      this.needsPaint = true;
+      this.meter.reset();
+    }
     this.camera.aspect = w / h;
     // portrait phones: open the vertical field of view so the whole board still fits across the screen
     this.camera.fov = this.camera.aspect < 1 ? Math.min(74, 40 / this.camera.aspect) : this.attract ? 48 : 40;
@@ -447,7 +562,11 @@ export class Stage {
     // A hidden tab gets no animation frames, but a relayed match still has to progress (moves resolve through
     // tweens): tick the clocks coarsely while hidden so the game logic never waits on a frame that will not come.
     setInterval(() => { if (document.hidden) { tweens.update(0.25); for (const fn of this.updaters) fn(0.25, performance.now() / 1000); } }, 250);
+    this.started = true;
     this.renderer.setAnimationLoop(() => {
+      const t0 = performance.now();
+      // quality and resolution changes land here, before the draw: the canvas they reset is painted in this same task
+      if (this.pending.length) for (const fn of this.pending.splice(0)) fn();
       this.timer.update();
       const dt = Math.min(0.05, this.timer.getDelta()), t = this.timer.getElapsed();
       this.sky.material.uniforms.time.value = t;
@@ -457,19 +576,35 @@ export class Stage {
       this.atmosphere.update(dt, t);
       this.flicker(t);
       for (const fn of this.updaters) fn(dt, t);
-      if (this.paused) return;
-      const shaking = this.shakeLeft > 0;
-      if (shaking) {
-        this.shakeLeft -= dt;
-        const k = this.shakeAmp * Math.max(0, this.shakeLeft) * 4;
-        this.shakeOffset.set((Math.random() - 0.5) * k, (Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
-        this.camera.position.add(this.shakeOffset);
-      }
-      this.composer.render(dt);
-      if (shaking) this.camera.position.sub(this.shakeOffset);
-      this.govern(dt);
+      if (this.paused && !this.needsPaint) { this.meter.reset(); return; }
+      this.draw(dt);
+      if (this.paused) this.meter.reset();
+      else this.govern(performance.now() - t0);
     });
   }
+
+  /** One frame through the composer: the shadow map on its cadence, the camera shake applied and undone. */
+  private draw(dt: number): void {
+    this.needsPaint = false;
+    const every = PRESETS[this.quality].shadowEvery;
+    this.frame++;
+    this.renderer.shadowMap.needsUpdate = every > 0 && (this.shadowDirty || this.frame % every === 0);
+    this.shadowDirty = false;
+    const shaking = this.shakeLeft > 0;
+    if (shaking) {
+      this.shakeLeft -= dt;
+      const k = this.shakeAmp * Math.max(0, this.shakeLeft) * 4;
+      this.shakeOffset.set((Math.random() - 0.5) * k, (Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
+      this.camera.position.add(this.shakeOffset);
+    }
+    this.gpu.begin();
+    this.composer.render(dt);
+    this.gpu.end();
+    if (shaking) this.camera.position.sub(this.shakeOffset);
+  }
+
+  /** Draw one frame now, even under an opaque screen: compiles every program a match needs (shadow and post variants included) while the versus screen still covers the canvas. */
+  warm(): void { if (this.started) this.draw(0); }
 
   /** Fire flicker: two incommensurate sines per light, so no two lights pulse together. */
   private flicker(t: number): void {
