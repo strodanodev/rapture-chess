@@ -2,4 +2,4 @@ allowBuilds:
   esbuild: true
   # keccak (via hardhat) ships a pure-JS fallback; its native build isn't needed, so it is declined explicitly.
   keccak: false
-  "tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/d843452b3add83aabccbae0dedeaffd4223d5462": true
+  "tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/8de5b05ac6a1567d8d85f168f28ddefa01843940": true
