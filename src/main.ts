@@ -16,7 +16,7 @@ import './ui/metal.css';
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
 import type { Move } from 'chess.js';
-import { parseLaunch } from 'deckwright/src/client/shell.ts';
+import { connectShell, parseLaunch, type CabinetShell } from 'deckwright/src/client/shell.ts';
 import { Stage } from './scene/stage';
 import { BoardView, squareToWorld, worldToSquare } from './scene/board';
 import { Army, PieceView } from './scene/pieces';
@@ -89,9 +89,13 @@ const wagerRoot = h('div', { class: 'wager-host' });
 const wager: WagerPanel = mountWager({
   root: wagerRoot,
   web3,
-  playerKey: () => (match instanceof RelayMatch ? match.playerId : null),
-  nodeUrl: () => (match instanceof RelayMatch ? match.nodeUrl : null),
+  playerKey: () => (match instanceof RelayMatch ? match.playerId : arcade?.init.player?.id ?? null),
+  nodeUrl: () => (match instanceof RelayMatch ? match.nodeUrl : arcade?.init.node?.url ?? null),
 });
+// Opened by the arcade without a match ("Play now"): the shell still names the player, so a stake can be made before
+// queueing instead of against the first move's clock. A placed match seats through its own shell (RelayMatch.placed).
+let arcade: CabinetShell | null = null;
+if (!launch.matchId && window.parent !== window) connectShell().then((s) => { arcade = s; wager.refresh(); }, () => { /* not the arcade */ });
 
 const realmFor = (c: RealmChoice, side: Side): RealmId => (c === 'valhalla' || c === 'underworld' ? c : side === 0 ? 'valhalla' : 'underworld');
 const accent = (side: Side) => stage?.setAccentColors(side === 0 ? 0x38a8ff : 0xff6a2a, side === 0 ? 0xff6a2a : 0x38a8ff);
