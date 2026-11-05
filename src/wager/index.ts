@@ -8,7 +8,8 @@
  *   // when an arcade match ends: wager.showMatch(matchId, settled.signatures)
  */
 import './wager.css';
-import { createChain, type ChainClient } from 'tessaract/web/lib/chain.js';
+import type { ChainClient } from 'tessaract/web/lib/chain.js';
+import { createReadChain, RPCS } from '../web3/rpc';
 import type { Web3Link } from '../web3/wallet';
 import {
   claimProblem, deltaClaimBytes, deltaWinner, encodeClaim, encodeClaimWithWinner, encodeRequestUnstake, winnerSignature, encodeStake, encodeUnstake, encodeWithdraw, formatZkLtc,
@@ -50,8 +51,8 @@ const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padS
 
 export function mountWager(o: WagerMountOptions): WagerPanel {
   const contract = o.contract ?? env.VITE_WAGER_ADDRESS ?? '';
-  const rpc = o.rpc ?? env.VITE_RPC_URL ?? 'https://liteforge.rpc.caldera.xyz/http';
-  const chain: ChainClient = createChain(rpc);
+  // reads fall back to the partner endpoint: the public one answers HTTP 429 under load
+  const chain: ChainClient = createReadChain(o.rpc ? [o.rpc, ...RPCS] : RPCS);
   const wallet = o.web3.wallet;
   const configured = /^0x[0-9a-fA-F]{40}$/.test(contract);
 
@@ -224,13 +225,25 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
   }
 
   // ------------------------------------------------------------------ state
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  let retries = 0;
   async function refresh(): Promise<void> {
+    if (retry) { clearTimeout(retry); retry = null; }
     const address = wallet.snapshot().address;
     if (!configured || !address) { stake = null; pending = 0n; render(); return; }
     try {
       const [s, p, d] = await Promise.all([readStake(chain, contract, address), readPending(chain, contract, address), delay ? Promise.resolve(delay) : readUnstakeDelay(chain, contract)]);
       stake = s; pending = p; delay = d;
-    } catch (e) { say(`Could not read the escrow: ${(e as Error).message}`, true); }
+      if (retries) { retries = 0; say(''); }
+    } catch (e) {
+      // a busy RPC is not a dead end: read again shortly, backing off
+      const busy = /429|bandwidth|rate|timeout|fetch|network/i.test((e as Error).message);
+      if (busy && retries < 6) {
+        const wait = 3000 * 2 ** retries++;
+        say(`The Liteforge RPC is busy, reading your stake again in ${Math.round(wait / 1000)} s…`);
+        retry = setTimeout(() => { void refresh(); }, wait);
+      } else say(`Could not read the escrow: ${(e as Error).message}`, true);
+    }
     render();
   }
   function recallMatch(): string | null {

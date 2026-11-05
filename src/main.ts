@@ -12,6 +12,7 @@
 import './ui/theme.css';
 import './ui/screens.css';
 import './ui/hud.css';
+import './ui/metal.css';
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
 import type { Move } from 'chess.js';
@@ -23,7 +24,9 @@ import { VFX } from './scene/vfx';
 import { Realm, REALM_NAME, type RealmId } from './scene/realm';
 import { loadSet, preloadAvatars } from './scene/assets';
 import { MATES } from './scene/mates';
+import { tweens, ease } from './scene/tween';
 import { Hud, type Fallen } from './ui/hud';
+import { RoleMarks } from './ui/marks';
 import { LocalMatch, type Match, type MatchEvents } from './game/session';
 import { RelayMatch } from './game/relay';
 import { mountWager, type WagerPanel } from './wager';
@@ -60,6 +63,7 @@ let board: BoardView | null = null;
 let army: Army | null = null;
 let vfx: VFX | null = null;
 let realm: Realm | null = null;
+let marks: RoleMarks | null = null;
 let match: Match | null = null;
 let you: Side = 0;
 let selected: PieceView | null = null;
@@ -132,6 +136,8 @@ register(hud.screen());
 onScreen((s) => {
   if (!stage) return;
   stage.paused = !!s.opaque;
+  // the phone HUD needs the board's place on screen: measure once the opening camera flight has settled
+  if (s.id === 'match') for (const ms of [300, 2800, 4500]) setTimeout(layoutHud, ms);
   const menu = s.id !== 'match' && s.id !== 'versus';
   if (menu && !stage.attract) stage.setAttract(true);
   // judge the frame rate on menus over the arena; the match turns its governor on itself once the shaders settle
@@ -142,7 +148,7 @@ onScreen((s) => {
 hud.bind({
   onFlip: () => { void flyToSide(you === 0 ? 1 : 0, true); },
   onConcede: () => { if (match && !match.state.over) match.concede(); },
-  onPromotion: (piece) => { if (pendingPromotion) { void playMove(pendingPromotion.from, pendingPromotion.to, piece); pendingPromotion = null; } },
+  onPromotion: (piece) => { if (pendingPromotion) { playMove(pendingPromotion.from, pendingPromotion.to, piece); pendingPromotion = null; } },
   onLeave: () => void leaveMatch(),
   onRematch: () => { if (!(match instanceof RelayMatch)) void startGame(you); },
   onStakes: () => app.openStakes(),
@@ -166,9 +172,16 @@ async function ensureStage(): Promise<void> {
   stage.scene.add(board.group);
   army = new Army(board.plinths, vfx);
   stage.scene.add(army.group);
-  stage.onUpdate((dt, t) => { board!.update(dt); army!.update(dt, t); vfx!.update(dt); realm!.update(dt, t); tickClock(); });
-  stage.onQuality((q, fps) => { hud.setFps(fps, q); vfx!.rich = q !== 'low' && q !== 'lite'; });
+  marks = new RoleMarks(stage.camera, canvas);
+  marks.onPress = onMarkPress;
+  document.getElementById('ui')!.before(marks.el);
+  stage.onUpdate((dt, t) => {
+    board!.update(dt); army!.update(dt, t); vfx!.update(dt); realm!.update(dt, t); tickClock();
+    marks!.update(army!.pieces.values(), !!match && !stage!.attract && currentScreen() === 'match', dt);
+  });
+  stage.onQuality((q, fps, scale) => { hud.setFps(fps, scale < 1 ? `${q} ${Math.round(scale * 100)}%` : q); vfx!.rich = q !== 'low' && q !== 'lite'; });
   canvas.addEventListener('pointerdown', onPointerDown);
+  stage.controls.addEventListener('end', () => layoutHud()); // the player orbited the board: re-fit the phone HUD
   canvas.addEventListener('pointermove', onPointerMove);
   stage.camera.position.set(0, 7, 16);
   stage.setAttract(true);
@@ -199,10 +212,6 @@ async function tableau(advance = true): Promise<void> {
   const c = new Chess(mate.fen);
   let last: Move | null = null;
   if (mate.moves) for (const san of mate.moves.split(' ')) last = c.move(san);
-  army!.clear();
-  clearSelection();
-  mateShown = null;
-  board!.setLastMove(last?.from ?? null, last?.to ?? null);
   const champions = [0, 1].map((side) => {
     const r = buildRoster(snapshot.cards, side as Side, web3.owned, `rapture-mate:${mate.name}`);
     const at = side === 0 ? { k: 'e1', q: 'd1', r: 'a1', b: 'c1', n: 'b1', p: 'a2' } : { k: 'e8', q: 'd8', r: 'a8', b: 'c8', n: 'b8', p: 'a7' };
@@ -217,10 +226,18 @@ async function tableau(advance = true): Promise<void> {
     types[side].set(p.square, p.type);
   }
   const kingSq = [...types[c.turn() === 'w' ? 0 : 1]].find(([, t]) => t === 'k')?.[0] ?? null;
+  // the new position is built off the board and its shaders compiled in parallel while the old one still stands,
+  // then it swaps in within one frame: no empty board, no frame stalled on a compile
+  const swapped = await army!.replace(
+    [{ side: 0, roster: rosters[0], types: types[0] }, { side: 1, roster: rosters[1], types: types[1] }],
+    async (staged) => { await stage!.renderer.compileAsync(staged, stage!.camera, stage!.scene); },
+    () => my !== mateGen || !!match);
+  if (!swapped) return;
+  stage!.hold(); // the swap's uploads say nothing about the frame rate
+  clearSelection();
+  board!.setLastMove(last?.from ?? null, last?.to ?? null);
   board!.setCheck(kingSq);
   home.setMate(mate.name, mate.where, last?.san ?? 'Checkmate');
-  await Promise.all([army!.muster(0, rosters[0], types[0]), army!.muster(1, rosters[1], types[1])]);
-  if (my !== mateGen) return;
   mateShown = { king: kingSq ? army!.at(kingSq) : undefined, mater: last ? army!.at(last.to) : undefined };
   mateShown.mater?.setHighlight(true);
   pulseMate();
@@ -265,6 +282,8 @@ async function prepare(side: Side, seed: string, owned: Set<string>, names: [str
   kills.clear();
   clearSelection();
   board!.setLastMove(null, null); board!.setCheck(null);
+  marks!.check = null;
+  marks!.you = side;
   await realm!.load(r);
   vfx!.embers(new THREE.Color(realm!.preset.embers));
   versus.progress(0.12, 'Summoning champions');
@@ -272,7 +291,10 @@ async function prepare(side: Side, seed: string, owned: Set<string>, names: [str
   await preloadAvatars(slugs, (done, total) => versus.progress(0.12 + 0.8 * (done / total), `Summoning champions ${done}/${total}`));
   await army!.muster(0, rosters[0], startSquares);
   await army!.muster(1, rosters[1], startSquares);
-  stage!.renderer.compile(stage!.scene, stage!.camera); // compile the avatars' shaders now, not on the first visible frame
+  // compile the avatars' shaders now (in parallel where the driver allows), then draw one frame under the versus
+  // screen so the shadow and post variants are built too: nothing compiles on the first visible frame
+  await stage!.renderer.compileAsync(stage!.scene, stage!.camera);
+  stage!.warm();
   versus.progress(1, 'To battle');
   hud.setPlayers(side, names, subs, relay);
   hud.setMoves([]);
@@ -377,6 +399,7 @@ async function onStep(move: Move | null, state: ChessState): Promise<void> {
     if (mover) hud.showCard(mover.card, (move.promotion as PieceType) ?? mover.type, web3.owned.has(mover.card.tokenId), mover.side);
     board!.setLastMove(move.from, move.to);
     board!.setCheck(null);
+    marks!.check = null;
     await army!.apply(move);
     if (victim) {
       fallen[victim.side].push({ card: victim.card, type: victim.type });
@@ -394,7 +417,7 @@ async function onStep(move: Move | null, state: ChessState): Promise<void> {
   const pos = new Chess(state.fen);
   if (!state.over && pos.inCheck()) {
     const king = kingOf(state.turn);
-    if (king) { board!.setCheck(king.square); vfx!.check(king.group.position); }
+    if (king) { board!.setCheck(king.square); vfx!.check(king.group.position); marks!.check = king; }
     hud.cine('Check', 'red', state.turn === you ? 'Your god-king is threatened' : 'The enemy god-king is threatened');
     hud.flash('check');
   }
@@ -487,11 +510,7 @@ function onPointerDown(ev: PointerEvent): void {
   if (selected) {
     // a legal destination under the pointer: the floor square first, then the square of the champion hit
     const to = [floor, piece?.square].find((sq) => sq && legal.some((m) => m.to === sq));
-    if (to) {
-      if (legal.some((m) => m.to === to && m.promotion)) { pendingPromotion = { from: selected.square, to }; hud.promotion(true); return; }
-      void playMove(selected.square, to, '');
-      return;
-    }
+    if (to) { tryMove(selected.square, to); return; }
   }
   const mine = onFloor?.side === you ? onFloor : piece?.side === you ? piece : null;
   if (mine) select(mine);
@@ -504,7 +523,9 @@ function select(piece: PieceView): void {
   piece.setHighlight(true);
   legal = match!.legalMoves().filter((m) => m.from === piece.square);
   board!.setSelected(piece.square);
-  board!.showTargets(legal.map((m) => m.to), new Set(legal.filter((m) => m.captured).map((m) => m.to)));
+  const captures = new Set(legal.filter((m) => m.captured).map((m) => m.to));
+  board!.showTargets(legal.map((m) => m.to), captures);
+  if (marks) { marks.selected = piece; marks.targets = captures; }
   hud.showCard(piece.card, piece.type, web3.owned.has(piece.card.tokenId), piece.side);
   vfx!.select(piece.group.position, piece.color);
 }
@@ -515,11 +536,90 @@ function clearSelection(): void {
   legal = [];
   board?.setSelected(null);
   board?.clearTargets();
+  if (marks) { marks.selected = null; marks.targets = new Set(); }
 }
 
-async function playMove(from: string, to: string, promotion: string): Promise<void> {
-  if (!match) return;
-  if (!match.act(encodeMove(from, to, promotion))) toast('That move is not legal.', 'err');
+/** Play a legal move of the selected champion, or open the promotion picker first. False if nothing was played. */
+function tryMove(from: string, to: string): boolean {
+  if (legal.some((m) => m.to === to && m.promotion)) { pendingPromotion = { from, to }; hud.promotion(true); return false; }
+  return playMove(from, to, '');
+}
+
+function playMove(from: string, to: string, promotion: string): boolean {
+  if (!match) return false;
+  if (match.act(encodeMove(from, to, promotion))) return true;
+  toast('That move is not legal.', 'err');
+  return false;
+}
+
+// ------------------------------------------------------------------ role marks: press to select, drag to move
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const dragHit = new THREE.Vector3();
+const DRAG_LIFT = 0.18;
+
+/** Where the pointer's ray meets the horizontal plane at `y`. */
+function rayAt(ev: PointerEvent, y: number): THREE.Vector3 | null {
+  const r = canvas.getBoundingClientRect();
+  pointer.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(pointer, stage!.camera);
+  dragPlane.constant = -y;
+  return raycaster.ray.intersectPlane(dragPlane, dragHit);
+}
+
+/** A mark was pressed. An enemy mark shows its card (or is captured, if the selected champion can take it); your own
+ *  mark selects its champion, and dragging it carries the champion across the board to drop on a square. */
+function onMarkPress(piece: PieceView, ev: PointerEvent, el: HTMLElement): void {
+  if (!match || currentScreen() !== 'match' || hud.isPaused() || marks!.held) return;
+  const owned = web3.owned.has(piece.card.tokenId);
+  const canAct = !busy && match.yourTurn && !pendingPromotion;
+  if (piece.side !== you) {
+    if (canAct && selected && legal.some((m) => m.to === piece.square)) { tryMove(selected.square, piece.square); return; }
+    hud.showCard(piece.card, piece.type, owned, piece.side);
+    return;
+  }
+  if (!canAct) { hud.showCard(piece.card, piece.type, owned, piece.side); return; }
+  const wasSelected = selected === piece;
+  if (!wasSelected) select(piece);
+
+  const home = piece.group.position.clone();
+  const height = piece.crown(new THREE.Vector3()).y;
+  const start = rayAt(ev, height + DRAG_LIFT);
+  const grab = start ? new THREE.Vector3(start.x - home.x, 0, start.z - home.z) : new THREE.Vector3();
+  const x0 = ev.clientX, y0 = ev.clientY;
+  let moved = false;
+  try { el.setPointerCapture(ev.pointerId); } catch { /* the pointer is already up */ }
+  marks!.held = piece;
+
+  const move = (e: PointerEvent) => {
+    if (e.pointerId !== ev.pointerId) return;
+    if (!moved && Math.hypot(e.clientX - x0, e.clientY - y0) < 6) return;
+    moved = true;
+    const at = rayAt(e, height + DRAG_LIFT);
+    if (!at) return;
+    piece.group.position.set(THREE.MathUtils.clamp(at.x - grab.x, -4.2, 4.2), DRAG_LIFT, THREE.MathUtils.clamp(at.z - grab.z, -4.2, 4.2));
+    board!.setHover(worldToSquare(piece.group.position));
+  };
+  const end = (e: PointerEvent) => {
+    if (e.pointerId !== ev.pointerId) return;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', end);
+    window.removeEventListener('pointercancel', end);
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    marks!.held = null;
+    board!.setHover(null);
+    if (!moved) { if (wasSelected) clearSelection(); return; } // a tap: select, or a second tap to let go
+    const to = e.type === 'pointerup' ? worldToSquare(piece.group.position) : null;
+    if (to && to !== piece.square && selected === piece && legal.some((m) => m.to === to) && match?.yourTurn && !busy) {
+      piece.group.position.y = 0;
+      if (tryMove(piece.square, to)) return; // the move glides on from where the champion was dropped
+    }
+    const from = piece.group.position.clone();
+    void tweens.run(0.22, (k) => { piece.group.position.lerpVectors(from, home, k); }, ease.outCubic);
+  };
+  // on the window, so the drag still ends if the capture could not be taken
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -528,14 +628,38 @@ document.addEventListener('keydown', (e) => {
   else if (hud.isPaused()) return;
   else if (e.key === 'f' || e.key === 'F') void flyToSide(you === 0 ? 1 : 0, true);
   else if (e.key === 'm' || e.key === 'M') hud.toggleChronicle();
+  else if ((e.key === 'i' || e.key === 'I') && marks) marks.enabled = !marks.enabled;
 });
 
 // ------------------------------------------------------------------ camera
+/** Portrait phones: the board already spans the width, so a higher, steeper camera is what makes it bigger (taller). */
+const portrait = () => innerWidth / innerHeight < 0.8;
+
 async function flyToSide(side: Side, quick: boolean): Promise<void> {
   if (!stage) return;
-  const z = side === 0 ? 11.5 : -11.5;
-  await stage.flyTo(new THREE.Vector3(0, 9.2, z), quick ? 1.1 : 2.4);
+  const s = side === 0 ? 1 : -1;
+  const to = portrait() ? new THREE.Vector3(0, 12.6, 7.2 * s) : new THREE.Vector3(0, 9.2, 11.5 * s);
+  await stage.flyTo(to, quick ? 1.1 : 2.4);
+  layoutHud();
 }
+
+/** Tell the HUD where the board is on screen (--board-top / --board-bottom, CSS px), so the phone layout can keep the
+ *  inspector, the moves, the banners and the feed in the bands above and below it instead of over it. Measured from
+ *  the board's corners at the floor and at a champion's height. */
+const boardBox = [-4.7, 4.7].flatMap((x) => [-4.7, 4.7].flatMap((z) => [0, 1.2].map((y) => new THREE.Vector3(x, y, z))));
+function layoutHud(): void {
+  if (!stage || currentScreen() !== 'match') return;
+  const r = canvas.getBoundingClientRect(), v = new THREE.Vector3();
+  let top = Infinity, bottom = -Infinity;
+  for (const p of boardBox) {
+    v.copy(p).project(stage.camera);
+    const y = r.top + (1 - v.y) / 2 * r.height;
+    top = Math.min(top, y); bottom = Math.max(bottom, y);
+  }
+  hud.setBoardBand(Math.max(0, top), Math.min(r.height, bottom));
+}
+let hudT = 0;
+addEventListener('resize', () => { clearTimeout(hudT); hudT = window.setTimeout(layoutHud, 150); });
 
 // ------------------------------------------------------------------ launch
 await ensureStage();

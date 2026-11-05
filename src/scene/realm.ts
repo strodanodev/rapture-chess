@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { loadModel } from './assets';
-import type { Stage } from './stage';
+import type { AtmospherePreset } from './atmosphere';
+import type { FireLights, Grade, Pool, RayColors, SkyExtras, Stage } from './stage';
 
 export type RealmId = 'valhalla' | 'underworld';
 export const REALM_NAME: Record<RealmId, string> = { valhalla: 'Valhalla', underworld: 'Underworld' };
@@ -23,6 +24,17 @@ interface RealmPreset {
   /** The polished dais round the board (the mirror on high presets): its radius, or 0 for none. */
   floorRadius: number;
   embers: number;
+  /** Volumetric rays from the key light through the shadow map. */
+  rays: RayColors;
+  /** Light shafts along the key light, the ground mist and the motes. */
+  atmosphere: AtmospherePreset;
+  /** Moon, clouds and underglow in the sky dome. */
+  skyExtras: SkyExtras;
+  /** Warm point lights at the fires (Blender coordinates already turned into three's: y up, z = -blender y). */
+  fires: FireLights;
+  /** The pool of light on the board. */
+  pool: Pool;
+  grade: Grade;
 }
 
 const PRESETS: Record<RealmId, RealmPreset> = {
@@ -31,16 +43,44 @@ const PRESETS: Record<RealmId, RealmPreset> = {
     aurora: 1, stars: 0.9,
     key: { color: 0xfff3e0, intensity: 2.4, position: [6, 12, 5] },
     rim: { color: 0x9fd0ff, intensity: 55 },
-    hemi: { sky: 0x4a5a8a, ground: 0x1a1410, intensity: 0.6 },
-    envIntensity: 0.6, floor: 0x1a1a22, floorRadius: 9.05, embers: 0xffd27a,
+    hemi: { sky: 0x4a5a8a, ground: 0x1a1410, intensity: 0.32 },
+    envIntensity: 0.45, floor: 0x1a1a22, floorRadius: 9.05, embers: 0xffd27a,
+    // moonlight through the open roof: cool, thin, long rays
+    rays: { color: 0xa9c6ff, density: 1 / 70, maxDensity: 0.28, distanceAttenuation: 2 },
+    atmosphere: {
+      shafts: { color: 0x9fc3ff, intensity: 0.55, count: 4 }, mist: { color: 0x8fa6c8, opacity: 0.18 },
+      // dust: faint in the hall, silver in the moonbeams
+      motes: { color: 0xe6eeff, base: 0.14, rise: 0.04, size: 0.09 },
+    },
+    // a low moon behind the colonnade, thin cloud lit on its side, the aurora above (setSky)
+    skyExtras: { moon: { dir: [-0.5, 0.58, -0.64], color: 0xe4ecff, size: 1 }, clouds: { color: 0x3a4a72, amount: 0.65, speed: 0.006 } },
+    pool: { color: 0xdfe8ff, intensity: 70, angle: 0.4 },
+    // the four braziers at the board corners: warm pools against the moonlight
+    fires: { color: 0xff9a48, intensity: 22, distance: 9, positions: [[-6.6, 2.0, 6.6], [6.6, 2.0, -6.6], [6.6, 2.0, 6.6], [-6.6, 2.0, -6.6]] },
+    // cool shadows, warm highlights
+    grade: { lift: [0.0, 0.006, 0.022], gamma: [1, 1, 1.02], gain: [1.04, 1.0, 0.95] },
   },
   underworld: {
     sky: { top: 0x050102, bottom: 0x2a0806, glow: 0x7a1a08, fog: 0x120404, fogDensity: 0.024 },
     aurora: 0, stars: 0.25,
     key: { color: 0xffd0b0, intensity: 1.8, position: [-5, 10, -6] },
     rim: { color: 0xff5a2a, intensity: 70 },
-    hemi: { sky: 0x4a1a10, ground: 0x200404, intensity: 0.7 },
+    hemi: { sky: 0x4a1a10, ground: 0x200404, intensity: 0.45 },
     envIntensity: 0.5, floor: 0x120606, floorRadius: 0, embers: 0xff6a2a,
+    // ember-lit ash: warmer, denser, shorter rays and a heavier haze
+    rays: { color: 0xff7a3a, density: 1 / 55, maxDensity: 0.36, distanceAttenuation: 2 },
+    atmosphere: {
+      shafts: { color: 0xff8a4a, intensity: 0.4, count: 3 }, mist: { color: 0x5a241a, opacity: 0.26 },
+      // embers: they glow on their own and rise fast off the lava
+      motes: { color: 0xff7a2a, base: 0.5, rise: 0.38, size: 0.05 },
+    },
+    // churning ash lit red from below, no moon
+    skyExtras: { clouds: { color: 0x1a0806, amount: 0.8, speed: 0.012 }, underglow: 1.4 },
+    pool: { color: 0xffc89a, intensity: 55, angle: 0.42 },
+    // the lava moat glows up onto the board between the bridges
+    fires: { color: 0xff4a14, intensity: 26, distance: 10, positions: [[7.7, 0.5, 0], [-7.7, 0.5, 0], [0, 0.5, 7.7], [0, 0.5, -7.7]] },
+    // ember-red shadows, hot highlights
+    grade: { lift: [0.03, 0.004, 0.0], gamma: [1.02, 1, 0.98], gain: [1.05, 0.96, 0.9] },
   },
 };
 
@@ -67,7 +107,10 @@ export class Realm {
     this.id = id;
     this.clear();
     const p = PRESETS[id];
-    this.stage.setSky(p.sky, p.aurora, p.stars);
+    this.stage.setSky(p.sky, p.aurora, p.stars, p.skyExtras);
+    this.stage.setFires(p.fires);
+    this.stage.setGrade(p.grade);
+    this.stage.setPool(p.pool, p.key.position);
     this.stage.keyLight.color.set(p.key.color);
     this.stage.keyLight.intensity = p.key.intensity;
     this.stage.keyLight.position.set(...p.key.position);
@@ -78,6 +121,8 @@ export class Realm {
     this.stage.hemi.intensity = p.hemi.intensity;
     this.stage.scene.environmentIntensity = p.envIntensity;
     this.stage.setFloorRadius(p.floorRadius);
+    this.stage.setRays(p.rays);
+    this.stage.atmosphere.apply(p.atmosphere, new THREE.Vector3(...p.key.position));
     const gltf = await loadModel(`${id}.glb`).catch((e) => { console.warn('[chess] realm failed', id, e); return null as GLTF | null; });
     if (!gltf || this.id !== id) return;
     this.dress(gltf.scene, id);
@@ -126,8 +171,12 @@ export class Realm {
     if (/crystal/.test(n)) { const m = src.clone(); m.emissiveIntensity = 2.6; return m; }
     if (/banner/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x14284a, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
     if (/gold/.test(n)) return new THREE.MeshStandardMaterial({ color: 0xffbf5e, roughness: 0.3, metalness: 1, envMapIntensity: 1.2 });
-    if (/obsidian/.test(n)) return new THREE.MeshPhysicalMaterial({ color: 0x0a070c, roughness: 0.2, metalness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 1.0 });
-    if (/bone/.test(n)) return new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: 0.75, metalness: 0 });
+    // obsidian: glassy black that catches the lava in its clearcoat, not a grey sheen from the studio environment
+    if (/obsidian/.test(n)) return new THREE.MeshPhysicalMaterial({ color: 0x07050a, roughness: 0.22, metalness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.35 });
+    // old bone: aged and dim, so the lava light colours it instead of bleaching it white
+    if (/bone/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x6e6252, roughness: 0.85, metalness: 0, envMapIntensity: 0.3 });
+    if (/iron/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.5, metalness: 0.85, envMapIntensity: 0.6 });
+    if (/shield/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x18284a, roughness: 0.55, metalness: 0.35, envMapIntensity: 0.6 });
     if (/basalt/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x15111a, roughness: 0.9, metalness: 0.08 });
     if (/dark/.test(n)) return new THREE.MeshStandardMaterial({ color: 0x1a1613, roughness: 0.7, metalness: 0.15 });
     // worn stone: dark, matte, lit by the braziers and the key; the pieces stay the bright thing on screen

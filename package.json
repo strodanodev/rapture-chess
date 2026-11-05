@@ -27,6 +27,7 @@
     "n8ao": "2.0.1",
     "postprocessing": "6.39.5",
     "three": "0.186.1",
+    "three-good-godrays": "0.12.1",
     "three.quarks": "0.17.1"
   },
   "devDependencies": {

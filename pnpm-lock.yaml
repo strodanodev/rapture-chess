@@ -32,6 +32,9 @@ importers:
       three:
         specifier: 0.186.1
         version: 0.186.1
+      three-good-godrays:
+        specifier: 0.12.1
+        version: 0.12.1(@types/three@0.186.0)(postprocessing@6.39.5(three@0.186.1))(three@0.186.1)
       three.quarks:
         specifier: 0.17.1
         version: 0.17.1(three@0.186.1)
@@ -1257,6 +1260,17 @@ packages:
     version: 0.9.9
     engines: {node: '>=22'}
     hasBin: true
+
+  three-good-godrays@0.12.1:
+    resolution: {integrity: sha512-t7zKvNFXOneVBrCs8enEzYC1pOs1VEYrCphPJ9ZNP+1qthwzbIEqpwgliIpz8m3DTT0+vTLlcFog0bUL4CSbXA==}
+    engines: {node: '>= 0.13.2'}
+    peerDependencies:
+      '@types/three': '>= 0.125.0'
+      postprocessing: ^6.33.4
+      three: '>= 0.125.0 <= 0.182.0'
+    peerDependenciesMeta:
+      '@types/three':
+        optional: true
 
   three.quarks@0.17.1:
     resolution: {integrity: sha512-HiyORXkPZTfy7OBA/IRJqTcNxpo53yctgV3N8dSUG/jdisiVciDFGyf6hVnOLQDrIEmzU0yOtNFvzo+JHCjc7A==}
@@ -2613,6 +2627,13 @@ snapshots:
   tessaract@https://codeload.github.com/strodanodev/tessaract/tar.gz/1df08c1c2b2edc64b72e48ddeff5c24462b79bbe:
     dependencies:
       esbuild: 0.28.1
+
+  three-good-godrays@0.12.1(@types/three@0.186.0)(postprocessing@6.39.5(three@0.186.1))(three@0.186.1):
+    dependencies:
+      postprocessing: 6.39.5(three@0.186.1)
+      three: 0.186.1
+    optionalDependencies:
+      '@types/three': 0.186.0
 
   three.quarks@0.17.1(three@0.186.1):
     dependencies:
