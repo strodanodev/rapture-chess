@@ -42,7 +42,9 @@ const SHAFT_FRAG = /* glsl */ `
   uniform vec3 color; uniform float intensity, time, flicker;
   varying vec2 vUv; varying vec3 vN; varying vec3 vW;
   void main() {
-    float along = vUv.y;
+    // clamped: interpolation can dip just under 0 where the mirror clips the cone at the floor, and pow() of a
+    // negative is NaN, which bloom then spread over the whole picture (a black frame)
+    float along = clamp(vUv.y, 0.0, 1.0);
     float lengthFade = smoothstep(0.0, 0.1, along) * pow(along, 2.2);
     vec3 V = normalize(cameraPosition - vW);
     float edge = pow(abs(dot(normalize(vN), V)), 2.4);
