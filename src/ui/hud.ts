@@ -10,7 +10,7 @@ import { ELEMENT_COLOR, PIECE_NAME } from '../roster';
 import type { PieceType, Side } from '../rules/chessRules';
 import { ART, championCard, identityTags, loreBlock, provenance } from './cardview';
 import { embers, h, icon, stagger } from './dom';
-import { prefs, setPref } from './prefs';
+import { prefs, setPref, SOUND_MODES, type SoundMode } from './prefs';
 import type { Screen } from './router';
 import { crest } from './widgets';
 
@@ -276,6 +276,7 @@ export class Hud {
       if (!confirming) { confirming = true; concedeLabel.textContent = 'Tap again to concede'; return; }
       this.pause(false); this.handlers.onConcede();
     } } }, icon('flag'), concedeLabel);
+    const sseg = h('div', { class: 'seg' }, ...(Object.entries(SOUND_MODES) as Array<[SoundMode, string]>).map(([v, label]) => h('button', { class: prefs.sound === v ? 'on' : '', text: label, on: { click: () => { setPref('sound', v); this.pause(true); } } })));
     const fpsT = h('button', { class: 'toggle', role: 'switch', aria: { checked: String(prefs.showFps), label: 'Frame rate readout' }, on: { click: () => { setPref('showFps', !prefs.showFps); this.showFps(prefs.showFps); this.pause(true); } } });
     this.pauseEl.replaceChildren(h('div', { class: 'pause-panel panel frame' },
       h('div', { class: 'panel-head' }, icon('pause'), h('h2', { text: 'Battle menu' })),
@@ -285,6 +286,7 @@ export class Hud {
         this.relay ? h('button', { class: 'btn block', on: { click: () => { this.pause(false); this.handlers.onStakes(); } } }, icon('stake'), 'Stakes') : null,
         this.handlers.canOfferDraw() ? h('button', { class: 'btn block', on: { click: () => { this.pause(false); this.handlers.onOfferDraw(); } } }, icon('shield'), 'Offer a draw') : null,
         h('div', { class: 'field' }, h('span', { text: 'Graphics' }), qseg),
+        h('div', { class: 'field' }, h('span', { text: 'Sound' }), sseg),
         h('div', { class: 'set-row' }, h('div', { class: 'set-text' }, h('b', { text: 'Frame rate readout' })), fpsT),
         h('hr', { class: 'rule' }),
         concede,

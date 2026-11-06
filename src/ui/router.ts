@@ -35,8 +35,13 @@ export const onScreen = (fn: (s: Screen) => void): void => { listeners.push(fn);
 export const currentScreen = (): ScreenId | null => current?.id ?? null;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+let wipeHook: (() => void) | null = null;
+/** Called as every wipe starts (main.ts plays its sound). */
+export const onWipe = (fn: () => void): void => { wipeHook = fn; };
+
 /** Close the iris over everything, run `swap`, open it again. */
 export async function wipe(swap: () => void | Promise<void>): Promise<void> {
+  wipeHook?.();
   iris.classList.remove('open');
   iris.classList.add('closing');
   await wait(420);

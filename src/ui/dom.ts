@@ -59,7 +59,12 @@ export function embers(count: number, colors: string[]): HTMLElement {
 
 let toastBox: HTMLElement | null = null;
 /** A short notice at the top of the screen. */
+let toastHook: ((kind: 'info' | 'err') => void) | null = null;
+/** Told of every toast (main.ts sounds the errors). */
+export const onToast = (fn: (kind: 'info' | 'err') => void): void => { toastHook = fn; };
+
 export function toast(text: string, kind: 'info' | 'err' = 'info', ico: IconName = kind === 'err' ? 'alert' : 'spark'): void {
+  toastHook?.(kind);
   if (!toastBox) { toastBox = h('div', { class: 'toasts', aria: { live: 'polite' } }); document.body.append(toastBox); }
   const t = h('div', { class: `toast${kind === 'err' ? ' err' : ''}` }, icon(ico), h('span', { text }));
   toastBox.append(t);

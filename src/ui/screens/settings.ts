@@ -1,8 +1,9 @@
-/** Settings: graphics preset, the fps readout, reduced motion, the default battlefield, the wallet, and the contracts. */
+/** Settings: graphics preset, the fps readout, reduced motion, sound, the default battlefield, the wallet, and the contracts. */
 import { CHESS_RULESET_ID } from '../../web3/wager';
 import { EXPLORER, FORGE_URL, type App } from '../app';
 import { h, icon, toast } from '../dom';
-import { prefs, setPref, type RealmChoice } from '../prefs';
+import { prefs, setPref, SOUND_MODES, type RealmChoice, type SoundMode } from '../prefs';
+import { sound } from '../../audio';
 import { pageHead, type Screen } from '../router';
 
 const QUALITY: Array<[string, string, string]> = [
@@ -17,6 +18,9 @@ const QUALITY: Array<[string, string, string]> = [
 export function settingsScreen(app: App): Screen {
   const body = h('div', { class: 'settings-list' });
   const row = (title: string, desc: string, control: HTMLElement) => h('div', { class: 'set-row' }, h('div', { class: 'set-text' }, h('b', { text: title }), h('span', { text: desc })), control);
+  // a volume slider; letting go plays a sample at the new level
+  const slider = (label: string, value: number, set: (v: number) => void, sample: string | null) => h('input', { class: 'vol', type: 'range', min: '0', max: '100', step: '1', value: String(Math.round(value * 100)), aria: { label },
+    on: { input: (e) => set(Number((e.target as HTMLInputElement).value) / 100), change: () => { if (sample) sound.play(sample); } } });
   const toggle = (on: boolean, flip: () => void) => h('button', { class: 'toggle', role: 'switch', aria: { checked: String(on) }, on: { click: () => { flip(); render(); } } });
 
   const render = () => {
@@ -29,6 +33,11 @@ export function settingsScreen(app: App): Screen {
       h('div', { class: 'set-row col' }, h('div', { class: 'set-text' }, h('b', { text: 'Quality' }), h('span', { text: q[2] })), qseg),
       row('Frame rate readout', 'Show frames per second and the live preset during a match.', toggle(prefs.showFps, () => setPref('showFps', !prefs.showFps))),
       row('Reduce motion', 'Calmer menus: no drifting embers, banner sweeps or camera shake.', toggle(prefs.still, () => setPref('still', !prefs.still))),
+      h('h3', { class: 'set-group', text: 'Sound' }),
+      h('div', { class: 'set-row col' }, h('div', { class: 'set-text' }, h('b', { text: 'Sound' }), h('span', { text: "Dark music, the realm's ambience and the battle. Effects only silences the music. S switches sound off and on anywhere." })),
+        h('div', { class: 'seg' }, ...(Object.entries(SOUND_MODES) as Array<[SoundMode, string]>).map(([v, label]) => h('button', { class: prefs.sound === v ? 'on' : '', text: label, on: { click: () => { setPref('sound', v); render(); } } })))),
+      row('Music', "Music and the realm's ambience.", slider('Music volume', prefs.musicVolume, (v) => setPref('musicVolume', v), null)),
+      row('Effects', 'Champions, the board and the menus.', slider('Effects volume', prefs.sfxVolume, (v) => setPref('sfxVolume', v), 'strike')),
       h('h3', { class: 'set-group', text: 'Battle' }),
       h('div', { class: 'set-row col' }, h('div', { class: 'set-text' }, h('b', { text: 'Default battlefield' }), h('span', { text: 'By banner: Alliance fights in Valhalla, Horde in the Underworld.' })),
         h('div', { class: 'seg' }, ...realms.map(([v, label]) => h('button', { class: prefs.realm === v ? 'on' : '', text: label, on: { click: () => { setPref('realm', v); render(); } } })))),

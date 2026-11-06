@@ -1,6 +1,7 @@
 /** Player preferences and the local practice record, kept in localStorage (best effort: private mode keeps defaults). */
 export type Difficulty = 'squire' | 'knight' | 'warlord';
 export type RealmChoice = 'auto' | 'valhalla' | 'underworld';
+export type SoundMode = 'on' | 'fx' | 'off';
 
 export interface Prefs {
   quality: string;
@@ -9,7 +10,12 @@ export interface Prefs {
   realm: RealmChoice;
   difficulty: Difficulty;
   side: 0 | 1;
+  sound: SoundMode;    // everything, effects only, or off (S toggles)
+  musicVolume: number; // 0..1, music and ambience
+  sfxVolume: number;   // 0..1, effects
 }
+
+export const SOUND_MODES: Record<SoundMode, string> = { on: 'On', fx: 'Effects only', off: 'Off' };
 
 export interface Record_ {
   wins: number; losses: number; draws: number; streak: number; best: number;
@@ -36,6 +42,9 @@ export const prefs: Prefs = {
   realm: stored.realm ?? 'auto',
   difficulty: stored.difficulty ?? 'knight',
   side: stored.side ?? 0,
+  sound: stored.sound && stored.sound in SOUND_MODES ? stored.sound : 'on',
+  musicVolume: typeof stored.musicVolume === 'number' ? Math.min(1, Math.max(0, stored.musicVolume)) : 0.6,
+  sfxVolume: typeof stored.sfxVolume === 'number' ? Math.min(1, Math.max(0, stored.sfxVolume)) : 0.9,
 };
 const listeners: Array<(p: Prefs) => void> = [];
 export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void {
