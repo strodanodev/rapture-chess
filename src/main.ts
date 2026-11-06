@@ -13,6 +13,7 @@ import './ui/theme.css';
 import './ui/screens.css';
 import './ui/hud.css';
 import './ui/metal.css';
+import './ui/mobile.css';
 import * as THREE from 'three';
 import { Chess } from 'chess.js';
 import type { Move } from 'chess.js';
@@ -86,6 +87,10 @@ const web3 = createWeb3Link(snapshot);
 const chain = createReadChain();
 void web3.restore();
 
+// Opened by the arcade without a match ("Play now"): the shell still names the player, so a stake can be made before
+// queueing instead of against the first move's clock. A placed match seats through its own shell (RelayMatch.placed).
+let arcade: CabinetShell | null = null;
+const inArcade = window.parent !== window;
 // the zkLTC wager panel: stakes bound to the player's LitNode key, paid out from the node's settled delta
 const wagerRoot = h('div', { class: 'wager-host' });
 const wager: WagerPanel = mountWager({
@@ -95,10 +100,6 @@ const wager: WagerPanel = mountWager({
   playerKey: () => (match instanceof RelayMatch ? match.playerId : inArcade ? arcade?.init.player?.id ?? null : playerKeyId()),
   nodeUrl: () => (match instanceof RelayMatch ? match.nodeUrl : inArcade ? arcade?.init.node?.url ?? null : meshNode()),
 });
-// Opened by the arcade without a match ("Play now"): the shell still names the player, so a stake can be made before
-// queueing instead of against the first move's clock. A placed match seats through its own shell (RelayMatch.placed).
-let arcade: CabinetShell | null = null;
-const inArcade = window.parent !== window;
 if (!inArcade && canHoldKey()) void playerKey().then(() => wager.refresh(), () => { /* no key here: stakes stay off */ });
 if (!launch.matchId && inArcade) connectShell().then((s) => { arcade = s; wager.refresh(); }, () => { /* not the arcade */ });
 

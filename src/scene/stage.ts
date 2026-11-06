@@ -26,6 +26,7 @@ import { Atmosphere } from './atmosphere';
 import { FrameMeter, GpuTimer } from './frametimer';
 import { installHeightFog } from './heightfog';
 import { tweens } from './tween';
+import { startQuality } from './device';
 
 // before any material compiles: the fog chunks gain a height term (thick on the floor, thin in the air)
 installHeightFog();
@@ -94,7 +95,7 @@ class GradeEffect extends Effect {
   }
 }
 
-export const isMobile = (): boolean => matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 820;
+export { isMobile } from './device';
 
 export interface SkyColors { top: THREE.ColorRepresentation; bottom: THREE.ColorRepresentation; glow: THREE.ColorRepresentation; fog: THREE.ColorRepresentation; fogDensity: number }
 
@@ -281,7 +282,7 @@ export class Stage {
 
     const saved = localStorage.getItem('rapture-chess.quality') as Quality | 'auto' | null;
     this.auto = !saved || saved === 'auto';
-    this.setQuality(saved && saved !== 'auto' ? saved : isMobile() ? 'medium' : 'high');
+    this.setQuality(saved && saved !== 'auto' ? saved : startQuality());
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -445,6 +446,9 @@ export class Stage {
     // the slower side of the frame; the GPU figure is 0 where the browser has no timer queries, and then only the
     // frame rate can say it is over (which, with vsync, it does)
     const load = Math.max(w.cpu, w.gpu);
+    // a steady 30 with a light CPU frame and no GPU timer is the display holding the page to 30 (iPhone Low Power
+    // Mode, Android battery saver), not a GPU falling behind: stepping down there would only cost looks
+    if (!w.gpu && w.fps > 27 && w.fps < 32 && w.cpu < BUDGET_MS * 0.4) { this.lowStreak = this.highStreak = 0; return; }
     const over = w.fps < 57 || load > BUDGET_MS * 0.95;
     const under = w.fps >= 59 && load < BUDGET_MS * 0.62;
     const atFloor = this.scaleIndex === SCALES.length - 1;

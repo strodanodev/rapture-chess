@@ -1,28 +1,27 @@
 /**
- * The PWA shell: registers the service worker, forces the install on phones and tablets (the game plays only from
- * the home screen, where the manifest's `display: fullscreen` applies), and makes the first tap enter fullscreen
- * while the page is still inside a browser tab.
+ * The PWA shell: registers the service worker and, on a phone or tablet still inside a browser tab, takes the page as
+ * far towards an installed, full-screen app as the browser allows, with no screen of instructions in between:
  *
- * Loaded from index.html beside main.ts: the game boots underneath while the gate is up, so the install opens straight
- * into the menu. The gate never shows inside the arcade iframe or for a placed LitNode match (`?match=`), on desktop,
- * or once the page already runs standalone.
+ * - Where the browser offers an install (`beforeinstallprompt`: Chrome, Edge, Samsung Internet on Android), the
+ *   player's first tap opens the browser's own install dialog. A later `beforeinstallprompt` (Chrome fires one again
+ *   after a dismissal, on its own schedule) is shown the same way on the next tap.
+ * - Every other tap that lands while the page is not full screen asks for full screen (the browser bars hide). Both
+ *   need the activation of a tap, and the install dialog uses it up, so they take turns.
  *
- * Android: `beforeinstallprompt` gives a real Install button; browsers that hold it back get the menu steps.
- * iOS: there is no install API, so the gate walks through Share -> Add to Home Screen (Safari and Chrome on iOS 16.4+).
- * After SKIP_MS an underlined "continue in the browser" link appears, for in-app browsers that cannot install at all.
- * Set SKIP_MS to 0 to remove that escape.
+ * iPhone Safari has neither: no install API and no full screen for a page. There the manifest and the
+ * apple-mobile-web-app tags make a home-screen launch open without browser bars, and the layout keeps to the safe
+ * areas either way.
+ *
+ * Loaded from index.html beside main.ts. Nothing runs inside the arcade iframe, on desktop, or once installed.
  */
-import './install.css';
-
 type InstallPromptEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
+type FsElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+type FsDocument = Document & { webkitFullscreenElement?: Element | null };
 
-const SKIP_MS = 12_000;
 const ua = navigator.userAgent;
 const iOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-const android = /Android/.test(ua);
-const mobile = iOS || android;
+const mobile = iOS || /Android/.test(ua);
 const framed = window.self !== window.top;
-const placedMatch = new URLSearchParams(location.search).has('match');
 const standalone = (): boolean =>
   matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -34,86 +33,32 @@ if ('serviceWorker' in navigator && !import.meta.env.DEV) {
   if (document.readyState === 'complete') register(); else addEventListener('load', register);
 }
 
-// ------------------------------------------------------------------ fullscreen on the first tap (phone in a browser tab)
-if (mobile && !framed && !standalone() && document.documentElement.requestFullscreen) {
-  const enter = (e: Event) => {
-    if (document.fullscreenElement || (e.target as Element | null)?.closest('#pwa-gate')) return;
-    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* iPhone Safari: no element fullscreen */ });
-  };
-  addEventListener('pointerup', enter, { passive: true });
-}
-
-// ------------------------------------------------------------------ the install gate
+// ------------------------------------------------------------------ install and full screen, on the player's taps
 let deferred: InstallPromptEvent | null = null;
-let installed = false;
-let gate: HTMLElement | null = null;
-addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e as InstallPromptEvent; render(); });
-addEventListener('appinstalled', () => { deferred = null; installed = true; render(); });
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e as InstallPromptEvent; });
+addEventListener('appinstalled', () => { deferred = null; });
 
-const SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>';
-const PLUS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M12 8v8M8 12h8"/></svg>';
-const MENU_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
-const HOME_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg>';
+const fullscreen = (): boolean => !!(document.fullscreenElement ?? (document as FsDocument).webkitFullscreenElement);
 
-// developer-authored markup only: nothing here comes from the network or the player
-const step = (n: number, iconSvg: string, html: string): string => `<li><b>${n}</b>${iconSvg}<span>${html}</span></li>`;
-
-const steps = (): string => {
-  if (installed) return step(1, HOME_ICON, 'Installed. Open <em>Rapture Chess</em> from your home screen.');
-  if (iOS) {
-    const canInstall = /Safari|CriOS/.test(ua) && !/FxiOS|EdgiOS|OPT\//.test(ua);
-    return (canInstall ? '' : step(0, HOME_ICON, 'Open this page in <em>Safari</em> first.')) +
-      step(1, SHARE_ICON, 'Tap <em>Share</em> in the browser bar.') +
-      step(2, PLUS_ICON, 'Choose <em>Add to Home Screen</em>, then <em>Add</em>.') +
-      step(3, HOME_ICON, 'Open <em>Rapture Chess</em> from your home screen.');
-  }
-  if (deferred) return '';
-  return step(1, MENU_ICON, 'Open the browser menu.') +
-    step(2, PLUS_ICON, 'Choose <em>Install app</em> or <em>Add to Home screen</em>.') +
-    step(3, HOME_ICON, 'Open <em>Rapture Chess</em> from your home screen.');
-};
-
-function render(): void {
-  if (!gate) return;
-  gate.innerHTML = `
-    <div class="g-in">
-      <img class="g-emb" src="/brand/emblem.webp" alt="" />
-      <img class="g-title" src="/brand/rapture-chess.webp" alt="Rapture Chess" />
-      <h2>${installed ? 'Ready' : 'Install to play'}</h2>
-      <p>${installed ? 'Rapture Chess is on your home screen and plays full screen from there.'
-        : 'Rapture Chess plays full screen from your home screen. It takes a few seconds, with nothing to download from a store.'}</p>
-      <ol>${steps()}</ol>
-      ${deferred && !installed ? '<button class="btn primary lg" id="pwa-install"><span>Install Rapture Chess</span></button>' : ''}
-      ${installed ? '' : '<span class="g-note">Free, no store, updates itself.</span>'}
-      ${SKIP_MS > 0 && !installed ? '<button class="g-skip" id="pwa-skip">Continue in the browser</button>' : ''}
-    </div>`;
-  gate.querySelector<HTMLButtonElement>('#pwa-install')?.addEventListener('click', async () => {
-    const ev = deferred;
-    if (!ev) return;
-    deferred = null;
-    try {
-      await ev.prompt();
-      const { outcome } = await ev.userChoice;
-      if (outcome === 'dismissed') deferred = ev; // Chrome lets the same event prompt again later
-    } catch { /* the event was already used */ }
-    render();
-  });
-  const skip = gate.querySelector<HTMLButtonElement>('#pwa-skip');
-  if (skip) {
-    setTimeout(() => skip.classList.add('on'), SKIP_MS);
-    skip.addEventListener('click', () => gate?.classList.add('hide'));
-  }
+function enterFullscreen(): void {
+  const root = document.documentElement as FsElement;
+  try {
+    if (root.requestFullscreen) void root.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* not allowed here */ });
+    else void root.webkitRequestFullscreen?.(); // iPadOS before 16.4
+  } catch { /* iPhone Safari: no page full screen */ }
 }
 
-if (mobile && !framed && !placedMatch && !standalone()) {
-  gate = document.createElement('div');
-  gate.id = 'pwa-gate';
-  gate.setAttribute('role', 'dialog');
-  gate.setAttribute('aria-label', 'Install Rapture Chess');
-  document.body.appendChild(gate);
-  render();
-  // a home-screen launch never reaches here; a tab that turns standalone (Android "Open" right after the install) does
-  for (const mode of ['standalone', 'fullscreen']) {
-    matchMedia(`(display-mode: ${mode})`).addEventListener('change', () => { if (standalone()) gate?.classList.add('hide'); });
-  }
+async function install(ev: InstallPromptEvent): Promise<void> {
+  try {
+    await ev.prompt();
+    await ev.userChoice;
+  } catch { /* already used, or the browser declined to show it */ }
+}
+
+if (mobile && !framed && !standalone()) {
+  addEventListener('pointerup', () => {
+    if (standalone()) return;
+    if (deferred) { const ev = deferred; deferred = null; void install(ev); return; }
+    if (!fullscreen()) enterFullscreen();
+  }, { passive: true, capture: true });
 }

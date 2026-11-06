@@ -6,6 +6,7 @@ import { embers, h, icon, stagger } from '../dom';
 import type { IconName } from '../icons';
 import { onPrefs, prefs, record } from '../prefs';
 import { TitleFX } from '../titlefx';
+import { deviceTier } from '../../scene/device';
 import { go, type Screen } from '../router';
 import { emblem, gvtMark, titleArt } from '../brand';
 import { walletChip } from '../widgets';
@@ -51,7 +52,8 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
   const titleImg = title.querySelector<HTMLImageElement>('.title-img')!;
   let fx: TitleFX | null = null;
   const runFx = (on: boolean) => {
-    if (on && !prefs.still) {
+    // a second WebGL context on the menu: not on older phones, where the CSS sparks stand in
+    if (on && !prefs.still && deviceTier !== 'weak') {
       fx ??= new TitleFX(title, titleImg);
       if (import.meta.env.DEV) (window as unknown as { titleFx: TitleFX }).titleFx = fx;
       title.classList.add('fx-on');
