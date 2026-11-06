@@ -1,7 +1,6 @@
 /** Settings: graphics preset, the fps readout, reduced motion, the default battlefield, the wallet, and the contracts. */
 import { CHESS_RULESET_ID } from '../../web3/wager';
-import { PACKSHOP } from '../../web3/packshop';
-import { EXPLORER, type App } from '../app';
+import { EXPLORER, FORGE_URL, type App } from '../app';
 import { h, icon, toast } from '../dom';
 import { prefs, setPref, type RealmChoice } from '../prefs';
 import { pageHead, type Screen } from '../router';
@@ -34,12 +33,12 @@ export function settingsScreen(app: App): Screen {
       h('div', { class: 'set-row col' }, h('div', { class: 'set-text' }, h('b', { text: 'Default battlefield' }), h('span', { text: 'By banner: Alliance fights in Valhalla, Horde in the Underworld.' })),
         h('div', { class: 'seg' }, ...realms.map(([v, label]) => h('button', { class: prefs.realm === v ? 'on' : '', text: label, on: { click: () => { setPref('realm', v); render(); } } })))),
       h('h3', { class: 'set-group', text: 'Wallet' }),
-      row(addr ? app.web3.shortAddress() : 'Not connected', addr ? 'Liteforge testnet. Held Rapture champions are seated first.' : 'Connect a Liteforge wallet to field your champions, buy packs and stake.',
+      row(addr ? app.web3.shortAddress() : 'Not connected', addr ? 'Liteforge testnet. Held Rapture champions are seated first.' : 'Connect a Liteforge wallet to field your champions and stake.',
         h('button', { class: `btn sm${addr ? ' ghost' : ' primary'}`, on: { click: () => void app.web3.toggle().then(render).catch((e: Error) => toast(e.message, 'err')) } }, icon('wallet'), addr ? 'Disconnect' : 'Connect')),
       h('h3', { class: 'set-group', text: 'On chain' }),
       h('div', { class: 'set-links' },
         link('Rapture ARC 1 collection', `${EXPLORER}/address/${app.snapshot.collection.address}`),
-        link('PackShop', `${EXPLORER}/address/${PACKSHOP}`),
+        link('Packs at the Forge', FORGE_URL),
         link('Stakes escrow', `${EXPLORER}/address/${(import.meta.env as Record<string, string>).VITE_WAGER_ADDRESS ?? ''}`),
         h('span', { class: 'chip' }, icon('rune'), `LitNode title ${CHESS_RULESET_ID}`)));
   };

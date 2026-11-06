@@ -4,8 +4,8 @@ import { ELEMENT_COLOR, power } from '../../roster';
 import type { App } from '../app';
 import { championCard, identityTags, loreBlock, provenance, ROLE_OF } from '../cardview';
 import { h, icon, modal } from '../dom';
-import { go, pageHead, type Screen } from '../router';
-import { walletChip } from '../widgets';
+import { pageHead, type Screen } from '../router';
+import { forgeLink, walletChip } from '../widgets';
 
 type Filter = { faction: string; kind: string; element: string; held: boolean };
 const KINDS: Card['kind'][] = ['God', 'Titan', 'King', 'Demigod', 'Mortal'];
@@ -35,8 +35,8 @@ export function armoryScreen(app: App): Screen {
         loreBlock(c),
         provenance(c),
         owned ? h('p', { class: 'hint ok' }, icon('check'), 'In your wallet: seated first in every army you field.')
-          : h('button', { class: 'btn sm', on: { click: () => { m.close(); void go('shop'); } } }, icon('bag'), 'Find it in a pack')));
-    const m = modal(c.name, sheet, { wide: true });
+          : forgeLink(app, 'btn sm', icon('bag'), 'Find it in a pack at the Forge', icon('external'))));
+    modal(c.name, sheet, { wide: true });
   };
 
   const render = () => {

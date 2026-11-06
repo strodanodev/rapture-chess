@@ -8,6 +8,8 @@ import type { Difficulty, RealmChoice } from './prefs';
 
 export const ARCADE_URL = 'https://arcade.litvm.games/';
 export const EXPLORER = 'https://liteforge.explorer.caldera.xyz';
+/** Rapture packs are bought and opened at the Forge, not in the game. */
+export const FORGE_URL = 'https://forge.litvm.games/';
 
 export interface App {
   readonly snapshot: Collection;

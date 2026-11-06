@@ -5,7 +5,7 @@
  */
 import { h, icon } from './dom';
 
-export type ScreenId = 'home' | 'play' | 'armory' | 'shop' | 'ranks' | 'settings' | 'versus' | 'match';
+export type ScreenId = 'home' | 'play' | 'armory' | 'ranks' | 'settings' | 'versus' | 'match';
 export interface Screen {
   id: ScreenId;
   el: HTMLElement;

@@ -192,9 +192,6 @@ button.chip:hover { border-color: var(--line-strong); }
 .ccard:hover .foil, .ccard.tilt .foil { opacity: 0.85; }
 button.ccard:hover { box-shadow: 0 22px 46px rgba(0, 0, 0, 0.6), 0 0 30px color-mix(in srgb, var(--rar) 45%, transparent); }
 .ccard.dim .inner { filter: saturate(0.25) brightness(0.55); }
-.ccard.back { background: linear-gradient(160deg, var(--gold-1), var(--gold-4) 45%, var(--gold-2)); }
-.ccard.back .inner { background: radial-gradient(circle at 50% 45%, #2b1d36, #0b0810 70%); display: grid; place-items: center; }
-.ccard.back img { width: 64%; opacity: 0.92; filter: drop-shadow(0 0 10px rgba(255, 190, 80, 0.45)); }
 
 /* ------------------------------------------------------------------ modal */
 .scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: max(16px, var(--safe-t)) max(16px, var(--safe-r)) max(16px, var(--safe-b)) max(16px, var(--safe-l)); background: rgba(3, 2, 6, 0.78); animation: fadeIn 0.25s ease-out; }

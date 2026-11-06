@@ -9,19 +9,20 @@ import { TitleFX } from '../titlefx';
 import { deviceTier } from '../../scene/device';
 import { go, type Screen } from '../router';
 import { emblem, gvtMark, titleArt } from '../brand';
-import { walletChip } from '../widgets';
+import { forgeLink, walletChip } from '../widgets';
 
 export function homeScreen(app: App): Screen & { setMate(name: string, where: string, san: string): void } {
-  const menuItem = (ico: IconName, title: string, sub: () => string, onClick: () => void) => {
+  // a menu entry: a button, or with no onClick the Shop, a link to the Forge in a new tab
+  const menuItem = (ico: IconName, title: string, sub: () => string, onClick: (() => void) | null) => {
     const s = h('span', { class: 's' });
-    const b = h('button', { class: 'menu-item', on: { click: onClick } },
-      h('span', { class: 'mi-ico' }, icon(ico)), h('span', { class: 'mi-text' }, h('span', { class: 't', text: title }), s), h('span', { class: 'mi-arrow' }, icon('back')));
+    const parts = [h('span', { class: 'mi-ico' }, icon(ico)), h('span', { class: 'mi-text' }, h('span', { class: 't', text: title }), s), h('span', { class: 'mi-arrow' }, icon(onClick ? 'back' : 'external'))];
+    const b = onClick ? h('button', { class: 'menu-item', on: { click: onClick } }, ...parts) : forgeLink(app, 'menu-item', ...parts);
     return { b, refresh: () => { s.textContent = sub(); } };
   };
   const items = [
     menuItem('swords', 'Ranked', () => 'LitNode mesh · zkLTC stakes', () => app.openRanked()),
     menuItem('grid', 'Armory', () => `${app.snapshot.cards.length} champions · ${app.web3.owned.size} held`, () => void go('armory')),
-    menuItem('bag', 'Shop', () => 'Rapture ARC 1 packs', () => void go('shop')),
+    menuItem('bag', 'Shop', () => 'Open Rapture ARC 1 packs at the Forge', null),
     menuItem('trophy', 'Leaderboards', () => { const r = record(); return `Practice ${r.wins}W ${r.losses}L ${r.draws}D`; }, () => void go('ranks')),
     menuItem('gear', 'Settings', () => 'Graphics, motion, wallet', () => void go('settings')),
   ];

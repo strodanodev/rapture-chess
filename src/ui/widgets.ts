@@ -1,7 +1,17 @@
-/** Small shared widgets: the wallet chip and the faction crest. */
+/** Small shared widgets: the wallet chip, the Forge link and the faction crest. */
 import { formatZkLtc } from '../web3/wager';
-import type { App } from './app';
+import { FORGE_URL, type App } from './app';
 import { h, icon, toast } from './dom';
+
+// The Forge opens in a new tab (the game may be inside the arcade's frame): read the wallet again on the way back, so
+// the champions a pack minted are seated at once.
+let forgeVisit: App | null = null;
+document.addEventListener('visibilitychange', () => { if (!document.hidden && forgeVisit) { void forgeVisit.web3.refresh(); forgeVisit = null; } });
+
+/** A link to the Forge, where Rapture packs are bought and opened. */
+export function forgeLink(app: App, cls: string, ...children: Array<Node | string>): HTMLAnchorElement {
+  return h('a', { class: cls, href: FORGE_URL, target: '_blank', rel: 'noopener', on: { click: () => { forgeVisit = app; } } }, ...children);
+}
 
 /** Connect button, or address · balance · held count once connected. Keeps itself current. */
 export function walletChip(app: App): HTMLElement {
