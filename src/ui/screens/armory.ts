@@ -55,7 +55,7 @@ export function armoryScreen(app: App): Screen {
       card.addEventListener('click', () => open(c));
       return card;
     }));
-    if (!list.length) grid.append(h('p', { class: 'empty', text: f.held ? 'No held champions match. Connect a wallet or open a pack in the Shop.' : 'No champion matches these filters.' }));
+    if (!list.length) grid.append(h('p', { class: 'empty', text: f.held ? 'No held champions match. Connect a wallet or open a pack at the Forge.' : 'No champion matches these filters.' }));
   };
   app.web3.onChange(() => { if (!el.hidden) render(); });
 

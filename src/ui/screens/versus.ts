@@ -7,7 +7,7 @@ import { crest } from '../widgets';
 import { gvtMark } from '../brand';
 
 const TIPS = [
-  'Held champions take the field first: open packs in the Shop to field your own.',
+  'Held champions take the field first: open packs at the Forge to field your own.',
   'Gods sit on the thrones, Titans in the towers, Kings and Demigods at their sides, Mortals on the line.',
   'Ranked results are replayed and signed by LitNode nodes, then finalized on MatchBook.',
   'A stake pays twice the smaller stake to the winner; a draw moves nothing.',
