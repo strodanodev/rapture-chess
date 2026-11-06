@@ -80,6 +80,8 @@ src/roster.ts             collection -> two armies (owned cards first, seeded or
 src/web3/wallet.ts        Deckwright wallet + holdings for the Rapture collection
 src/scene/                three.js: stage (post-processing, godrays, light pool, fire lights, grade, quality governor), atmosphere (shafts, mist, motes), heightfog, realm, board, pieces, VFX (three.quarks), assets
 src/game/relay.ts         RelayMatch: a placed LitNode match (arcade shell seat + ledger signature) or a dev room
+src/litnode/standalone.ts ranked from the game itself: its own player key, mesh discovery on chain, queue, placement check, seat and ledger signing
+src/litnode/mesh/         LitNode's browser client and protocol modules, vendored byte for byte (scripts/vendor-litnode.mjs, Apache-2.0)
 src/wager/                the zkLTC wager panel; src/web3/wager.ts + canonical.ts the claim encoding
 contracts/                LitNodeWager.sol (+ vendored Ed25519, mocks, hardhat tests)
 relay/ gauntlets/         the gauntlet match server LitNode spawns per match, and its node config

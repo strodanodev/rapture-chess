@@ -126,7 +126,7 @@ export function mountWager(o: WagerMountOptions): WagerPanel {
       go.disabled = true;
       body.append(el('p', 'note', 'Open Rapture Chess from the LitNode arcade to stake: the stake is bound to the player key the arcade signs with.'));
     } else if (boundKey && key && boundKey !== key) {
-      body.append(el('p', 'note err', `Your stake is bound to key ${short(boundKey)}, but the arcade plays as ${short(key)}. Unstake first, or play with the bound key.`));
+      body.append(el('p', 'note err', `Your stake is bound to key ${short(boundKey)}, but you now play as ${short(key)}. Unstake and stake again under this key, or play with the bound key.`));
     } else {
       body.append(el('p', 'note', `Player key ${short(useKey)}${boundKey ? ' (bound)' : ''}.`));
     }

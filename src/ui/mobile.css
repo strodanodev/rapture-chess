@@ -1,0 +1,115 @@
+/*
+ * Phones: the short landscape screen (a phone on its side, 320-430 px tall), small portrait screens (iPhone 8 / SE,
+ * 375 x 667, and Androids down to 360 wide), and fallbacks for older iOS Safari. Loaded last, so it only overrides.
+ */
+
+/* ------------------------------------------------------------------ iOS 15 and 16.0-16.1: no color-mix()
+ * A declaration that uses var() is accepted at parse time and only fails when computed, and then it falls back to the
+ * initial value, not to an earlier declaration: so the fallbacks live here, behind @supports, not inline. */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .plate.active { border-color: var(--c); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+  .crest { background: radial-gradient(circle at 50% 35%, #2a2030, #0a080d 75%); box-shadow: inset 0 0 0 1px var(--c); }
+  .banner-pick { background: linear-gradient(180deg, #16111e, #0b0910); }
+  .banner-pick::after { background: radial-gradient(ellipse at 50% 0%, rgba(255, 240, 210, 0.1), transparent 60%); }
+  .banner-pick:hover { border-color: var(--c); }
+  .banner-pick.on { box-shadow: 0 0 0 1px var(--c); }
+  .meter > i { background: var(--accent); }
+  .ccard { background: linear-gradient(160deg, var(--rar), #1a1420 45%, var(--rar)); }
+  .ccard .gem { background: radial-gradient(circle at 35% 30%, #fff, var(--el) 45%, #000); }
+  button.ccard:hover { box-shadow: 0 22px 46px rgba(0, 0, 0, 0.6); }
+}
+
+/* ------------------------------------------------------------------ every phone */
+@media (max-width: 600px) {
+  .seg button { font-size: 11px; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg .swatch { margin-right: 5px; }
+}
+@media (max-width: 360px) {
+  .mi-text .t { font-size: 10px; letter-spacing: 0.08em; }
+  .bp-name { font-size: 15px; letter-spacing: 0.14em; }
+  .page-title h1 { font-size: 20px; }
+}
+
+/* ------------------------------------------------------------------ small portrait (iPhone 8 / SE and the like) */
+@media (max-width: 600px) and (max-height: 700px) and (orientation: portrait) {
+  .logo-emblem { display: none; }
+  .logo-word { width: min(280px, 76vw); }
+  .menu-item { min-height: 70px; padding: 8px 4px; gap: 4px; }
+  .home-menu > .menu-item:nth-child(n + 5) { min-height: 54px; }
+  .btn.play-btn { --h: 54px; }
+  .play-wrap { padding-top: 12vh; }
+  .play-body { gap: 12px; }
+  .banner-pick { padding: 12px 8px 10px; gap: 5px; }
+  .banner-pick .crest { width: 34px; height: 34px; }
+}
+
+/* ------------------------------------------------------------------ landscape phones: the menus beside the board */
+@media (max-height: 520px) and (orientation: landscape) {
+  /* home: logo and menu in a column on the left, the arena on the right */
+  .home { grid-template-columns: minmax(0, min(400px, 54vw)) 1fr; grid-template-rows: auto 1fr;
+    padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 14px) calc(var(--safe-b) + 8px) calc(var(--safe-l) + 14px); }
+  .home-scrim { background: linear-gradient(90deg, rgba(5, 4, 9, 0.94) 0%, rgba(5, 4, 9, 0.8) 36%, rgba(5, 4, 9, 0) 62%), linear-gradient(180deg, rgba(5, 4, 9, 0.6), transparent 26%); }
+  .home-main { grid-column: 1; grid-row: 2; align-self: center; grid-template-rows: auto auto; gap: 8px; }
+  .logo { justify-items: start; text-align: left; }
+  .logo-emblem { display: none; }
+  .logo-word { width: min(220px, 100%); }
+  .mate-plaque { position: fixed; left: auto; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 6px); grid-row: auto; margin: 0; }
+  .home-menu { grid-row: auto; gap: 6px; }
+  .btn.play-btn { --h: 46px; font-size: 15px; margin-bottom: 0; }
+  .menu-item, .home-menu > .menu-item:nth-child(n + 5) { min-height: 46px; border-width: 9px; grid-template-columns: auto auto; justify-content: center; align-items: center; gap: 7px; padding: 0 2px; }
+  .mi-ico { width: 26px; height: 26px; }
+  .mi-ico svg { width: 14px; height: 14px; }
+  .mi-text .t { font-size: 10.5px; letter-spacing: 0.08em; white-space: nowrap; }
+
+  /* menu pages: a slim header */
+  .page-head { padding: calc(var(--safe-t) + 6px) calc(var(--safe-r) + 14px) 6px calc(var(--safe-l) + 14px); gap: 12px; }
+  .page-head .icon-btn.back { width: 40px; height: 40px; }
+  .page-title .kicker { display: none; }
+  .page-title h1 { font-size: 20px; }
+  .page-head .wallet-chip { min-height: 38px; padding: 3px 12px 3px 3px; }
+  .page-head .wc-ico { width: 30px; height: 30px; }
+  .page-body { padding: 2px calc(var(--safe-r) + 14px) calc(var(--safe-b) + 14px) calc(var(--safe-l) + 14px); }
+
+  /* play: the setup on the right in two columns, so "Enter the arena" is on screen without scrolling */
+  .play-wrap { padding: 0 calc(var(--safe-r) + 14px) calc(var(--safe-b) + 10px) 14px; }
+  .play-panel { width: min(600px, 74vw); }
+  .play-panel .panel-head { padding: 8px 14px; }
+  .play-body { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 10px 14px; padding: 10px 14px 12px; }
+  .play-body .seg { grid-auto-columns: minmax(0, 1fr); }
+  .play-body .seg button { min-width: 0; }
+  .play-body .field > span { white-space: nowrap; }
+  .play-body > :nth-child(1) { grid-column: 1; grid-row: 1 / 3; }
+  .play-body > :nth-child(2) { grid-column: 2; grid-row: 1; }
+  .play-body > :nth-child(3) { grid-column: 2; grid-row: 2; }
+  .play-body > :nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+  .play-body > :nth-child(n + 5) { grid-column: 1 / -1; }
+  .play-body > .ornament, .play-body .hint:empty { display: none; }
+  .field { gap: 5px; }
+  .seg button { min-height: 38px; font-size: 11px; letter-spacing: 0.06em; white-space: nowrap; }
+  .banners { height: 100%; }
+  .banner-pick { padding: 8px 6px; gap: 4px; align-content: center; }
+  .banner-pick .crest { width: 34px; height: 34px; }
+  .bp-name { font-size: 14px; letter-spacing: 0.14em; }
+  .bp-sub { font-size: 10px; }
+  .play-body .btn.lg { --h: 48px; }
+
+  /* dialogs: use the height there is */
+  .modal { max-height: 100%; }
+
+  /* versus: the two banners side by side again (the narrow-screen rule stacks them, for portrait) */
+  .vs-side { top: 0; bottom: 0; width: 58%; height: auto; }
+  .vs-side.alliance { top: 0; bottom: 0; clip-path: polygon(0 0, 100% 0, 80% 100%, 0 100%); }
+  .vs-side.horde { top: 0; bottom: 0; clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%); align-items: flex-end; }
+  .vs-art { width: 80%; opacity: 0.5; }
+  .alliance .vs-id, .horde .vs-id { padding: 0 7% calc(var(--safe-b) + 84px); }
+  .vs-name { font-size: clamp(22px, 4vw, 34px); }
+  .vs-mark { top: 40%; font-size: clamp(48px, 9vw, 72px); }
+  .vs-foot { bottom: calc(var(--safe-b) + 14px); width: min(420px, 50vw); gap: 6px; }
+  .vs-tip, .vs-foot .gvt-mark, .vs-rune { display: none; }
+  @keyframes vsLeft { from { transform: translateX(-60%); } }
+  @keyframes vsRight { from { transform: translateX(60%); } }
+}
+@media (max-height: 520px) and (orientation: landscape) and (max-width: 760px) {
+  .play-wrap { justify-content: center; padding-left: calc(var(--safe-l) + 14px); }
+  .play-panel { width: min(600px, 100%); }
+}

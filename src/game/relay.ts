@@ -9,7 +9,7 @@
  * The relay echoes accepted entries; only those move the board, so both screens replay the same log.
  */
 import type { Move } from 'chess.js';
-import { connectShell, parseLaunch, type CabinetShell } from 'tessaract/src/client/shell.ts';
+import { connectShell, parseLaunch, type CabinetShell, type LaunchParams } from 'tessaract/src/client/shell.ts';
 import { acceptDraw, createChessRules, declineDraw, entryAction, offerDraw, type ChessRules, type ChessState, concede, Op, type Side } from '../rules/chessRules';
 import { CHESS_RULESET_V1 } from '../litnode/chessTitle';
 import type { LogEntry, Match, MatchEvents } from './session';
@@ -49,10 +49,13 @@ export class RelayMatch implements Match {
     this.state = this.rules.init('pending', this.participants);
   }
 
-  /** The placed match this page was launched for, seated through the arcade shell. */
-  static async placed(events: MatchEvents): Promise<RelayMatch> {
-    const launch = parseLaunch();
-    const shell = await connectShell();
+  /**
+   * A placed match: the one the arcade launched this page for (seated through its shell), or, with `via`, one this
+   * page queued for itself (src/litnode/standalone.ts: its own launch and a shell holding the player's key).
+   */
+  static async placed(events: MatchEvents, via?: { launch: LaunchParams; shell: CabinetShell }): Promise<RelayMatch> {
+    const launch = via?.launch ?? parseLaunch();
+    const shell = via?.shell ?? await connectShell();
     const you = shell.init.player.id;
     const m = new RelayMatch(events, you, shell);
     const wsAddr = launch.ws ?? shell.init.match?.wsAddr ?? null;
