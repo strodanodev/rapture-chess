@@ -21,6 +21,10 @@ const PLINTH_TOP: Record<PieceType, number> = { p: 0.1, n: 0.175, b: 0.21, r: 0.
 /** Blender characters face -Y, which glTF turns into +Z: White (on +Z) turns around to face the Horde. */
 const FACING: Record<Side, number> = { 0: Math.PI, 1: 0 };
 
+/** Beats of a move as it plays out, for the sound: a slide, a knight's leap or a castling starts; a piece lands;
+ *  the attacker strikes (the victim falls 0.25 s later); a pawn ascends. */
+export type Cue = 'move' | 'leap' | 'castle' | 'land' | 'strike' | 'ascend';
+
 /** Avatar files already packed (once per file: every piece cloned from it shares the packed geometry). */
 const packed = new WeakSet<object>();
 
@@ -206,6 +210,8 @@ export class PieceView {
 export class Army {
   readonly group = new THREE.Group();
   readonly pieces = new Map<string, PieceView>();
+  /** Told each beat of a move as it plays (see Cue). */
+  onCue: ((cue: Cue, piece: PieceView) => void) | null = null;
 
   constructor(private readonly plinths: Map<string, THREE.Object3D>, private readonly vfx: VFX) {}
 
@@ -260,16 +266,19 @@ export class Army {
     const rook = castle ? this.pieces.get(castle.from) : undefined;
     if (rook && castle) { this.pieces.delete(castle.from); this.pieces.set(castle.to, rook); }
 
+    this.onCue?.(rook ? 'castle' : move.piece === 'n' ? 'leap' : 'move', piece);
     const jobs: Promise<void>[] = [piece.moveTo(move.to, move.piece === 'n', this.vfx)];
     if (rook && castle) jobs.push(rook.moveTo(castle.to, false, this.vfx));
     await Promise.all(jobs);
     if (victim) {
       piece.play('attack', 1.6);
+      this.onCue?.('strike', piece);
       await victim.fall(this.vfx);
     } else {
       this.vfx.landing(piece.group.position, piece.color);
+      if (!rook) this.onCue?.('land', piece);   // castling's own sound sets both pieces down
     }
-    if (move.promotion) await piece.ascend(move.promotion as PieceType, this.vfx);
+    if (move.promotion) { this.onCue?.('ascend', piece); await piece.ascend(move.promotion as PieceType, this.vfx); }
   }
 
   clear(): void {

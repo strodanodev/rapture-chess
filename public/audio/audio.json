@@ -1,0 +1,219 @@
+{
+  "about": "Original dark-fantasy sounds, synthesized from code by scripts/audio in the theforge monorepo. No samples or third-party recordings: royalty-free.",
+  "sounds": {
+    "ui-click": {
+      "file": "ui-click.mp3",
+      "kind": "sfx",
+      "gain": 0.32,
+      "vary": 0.04,
+      "dur": 0.29,
+      "about": "A dull iron latch: buttons and menu items"
+    },
+    "ui-hover": {
+      "file": "ui-hover.mp3",
+      "kind": "sfx",
+      "gain": 0.12,
+      "vary": 0.08,
+      "dur": 0.05,
+      "about": "A faint rune tick under the pointer"
+    },
+    "ui-back": {
+      "file": "ui-back.mp3",
+      "kind": "sfx",
+      "gain": 0.3,
+      "vary": 0.04,
+      "dur": 0.32,
+      "about": "A lower latch, falling: back and close"
+    },
+    "ui-wipe": {
+      "file": "ui-wipe.mp3",
+      "kind": "sfx",
+      "gain": 0.36,
+      "vary": 0.03,
+      "dur": 1.68,
+      "about": "The gilded iris closing and opening: a dark rush and a low thud"
+    },
+    "ui-error": {
+      "file": "ui-error.mp3",
+      "kind": "sfx",
+      "gain": 0.3,
+      "dur": 0.68,
+      "about": "A dissonant low buzz: not allowed"
+    },
+    "ui-confirm": {
+      "file": "ui-confirm.mp3",
+      "kind": "sfx",
+      "gain": 0.42,
+      "dur": 3.73,
+      "about": "A cold minor chime: a purchase, a reward, a solved puzzle"
+    },
+    "match-start": {
+      "file": "match-start.mp3",
+      "kind": "sfx",
+      "gain": 0.8,
+      "dur": 6.66,
+      "about": "War horn and drums under a reverse swell: the battle begins"
+    },
+    "turn-yours": {
+      "file": "turn-yours.mp3",
+      "kind": "sfx",
+      "gain": 0.45,
+      "dur": 6.87,
+      "about": "A single bell tolls: your turn"
+    },
+    "turn-foe": {
+      "file": "turn-foe.mp3",
+      "kind": "sfx",
+      "gain": 0.4,
+      "dur": 2.97,
+      "about": "A muffled drum the dark breathes into: the enemy moves"
+    },
+    "end-turn": {
+      "file": "end-turn.mp3",
+      "kind": "sfx",
+      "gain": 0.45,
+      "vary": 0.03,
+      "dur": 1.38,
+      "about": "An iron gear ratchets and a stone seal drops"
+    },
+    "victory": {
+      "file": "victory.mp3",
+      "kind": "sfx",
+      "gain": 0.9,
+      "dur": 8.88,
+      "about": "Horns lift from minor to major over drums and choir: victory"
+    },
+    "defeat": {
+      "file": "defeat.mp3",
+      "kind": "sfx",
+      "gain": 0.85,
+      "dur": 8.51,
+      "about": "A deep toll, a tritone choir and a wail sinking away: defeat"
+    },
+    "draw": {
+      "file": "draw.mp3",
+      "kind": "sfx",
+      "gain": 0.6,
+      "dur": 6.17,
+      "about": "Two bells that never resolve: a draw"
+    },
+    "strike": {
+      "file": "strike.mp3",
+      "kind": "sfx",
+      "gain": 0.6,
+      "vary": 0.06,
+      "dur": 1.21,
+      "about": "A blade through the air and a ringing bite: an attack"
+    },
+    "hit": {
+      "file": "hit.mp3",
+      "kind": "sfx",
+      "gain": 0.6,
+      "vary": 0.07,
+      "dur": 0.81,
+      "about": "A heavy blow lands: crunch and thud"
+    },
+    "death": {
+      "file": "death.mp3",
+      "kind": "sfx",
+      "gain": 0.7,
+      "vary": 0.04,
+      "dur": 3.17,
+      "about": "The champion shatters and its soul wails away"
+    },
+    "piece-move": {
+      "file": "piece-move.mp3",
+      "kind": "sfx",
+      "gain": 0.42,
+      "vary": 0.06,
+      "dur": 0.83,
+      "about": "A stone plinth slides across the board"
+    },
+    "piece-leap": {
+      "file": "piece-leap.mp3",
+      "kind": "sfx",
+      "gain": 0.45,
+      "vary": 0.05,
+      "dur": 1.22,
+      "about": "A knight leaps: a rising rush of air"
+    },
+    "piece-land": {
+      "file": "piece-land.mp3",
+      "kind": "sfx",
+      "gain": 0.5,
+      "vary": 0.07,
+      "dur": 1.04,
+      "about": "A champion sets down on its square: stone on stone"
+    },
+    "castle": {
+      "file": "castle.mp3",
+      "kind": "sfx",
+      "gain": 0.5,
+      "vary": 0.03,
+      "dur": 1.62,
+      "about": "King and tower grind past each other and settle"
+    },
+    "check": {
+      "file": "check.mp3",
+      "kind": "sfx",
+      "gain": 0.6,
+      "dur": 6.76,
+      "about": "A low bell and a minor-second swell: the god-king is threatened"
+    },
+    "promote": {
+      "file": "promote.mp3",
+      "kind": "sfx",
+      "gain": 0.65,
+      "dur": 6.86,
+      "about": "A pawn ascends: a choir rises into a bright bell"
+    },
+    "select": {
+      "file": "select.mp3",
+      "kind": "sfx",
+      "gain": 0.26,
+      "vary": 0.04,
+      "dur": 1.11,
+      "about": "A rune wakes under the champion you pick"
+    },
+    "amb-hall": {
+      "file": "amb-hall.mp3",
+      "kind": "amb",
+      "gain": 0.5,
+      "loop": true,
+      "dur": 32,
+      "about": "Valhalla: wind through the hall, crackling braziers, far thunder"
+    },
+    "amb-abyss": {
+      "file": "amb-abyss.mp3",
+      "kind": "amb",
+      "gain": 0.5,
+      "loop": true,
+      "dur": 32,
+      "about": "The Underworld: a lava rumble, bubbling, drips and far-off moans"
+    },
+    "menu": {
+      "file": "menu.mp3",
+      "kind": "music",
+      "gain": 0.55,
+      "loop": true,
+      "dur": 74,
+      "about": "\"Ashen Vigil\": slow choir and strings over a drone, a tolling bell and a lone music box"
+    },
+    "battle-valhalla": {
+      "file": "battle-valhalla.mp3",
+      "kind": "music",
+      "gain": 0.5,
+      "loop": true,
+      "dur": 65,
+      "about": "\"Blood Oath\": war drums, low string ostinato, horns and choir (90 bpm)"
+    },
+    "battle-underworld": {
+      "file": "battle-underworld.mp3",
+      "kind": "music",
+      "gain": 0.5,
+      "loop": true,
+      "dur": 65,
+      "about": "\"Abyssal March\": a heartbeat drum, a tritone ostinato, scraping metal and whispers (75 bpm)"
+    }
+  }
+}

@@ -38,9 +38,11 @@ import { buildRoster, type Card, type Collection } from './roster';
 import { createWeb3Link } from './web3/wallet';
 import { createReadChain } from './web3/rpc';
 import type { App } from './ui/app';
-import { h, icon, modal, toast } from './ui/dom';
-import { DIFFICULTY, onPrefs, prefs, recordResult, type Difficulty, type RealmChoice } from './ui/prefs';
-import { currentScreen, go, onScreen, register, resetStack } from './ui/router';
+import { h, icon, modal, onToast, toast } from './ui/dom';
+import { DIFFICULTY, onPrefs, prefs, recordResult, setPref, type Difficulty, type RealmChoice } from './ui/prefs';
+import { currentScreen, go, onScreen, onWipe, register, resetStack } from './ui/router';
+import { sound } from './audio';
+import type { Cue } from './scene/pieces';
 import { homeScreen } from './ui/screens/home';
 import { playScreen } from './ui/screens/play';
 import { armoryScreen } from './ui/screens/armory';
@@ -106,11 +108,35 @@ if (!launch.matchId && inArcade) connectShell().then((s) => { arcade = s; wager.
 const realmFor = (c: RealmChoice, side: Side): RealmId => (c === 'valhalla' || c === 'underworld' ? c : side === 0 ? 'valhalla' : 'underworld');
 const accent = (side: Side) => stage?.setAccentColors(side === 0 ? 0x38a8ff : 0xff6a2a, side === 0 ? 0xff6a2a : 0x38a8ff);
 
+// ------------------------------------------------------------------ sound (src/audio): the realm's ambience, menu or battle music, effects
+let bedRealm: RealmId = realmFor(prefs.realm, prefs.side);
+/** Music and ambience for where the player is: the realm's ambience always, battle music from the versus screen on. */
+function syncBeds(r: RealmId = bedRealm): void {
+  bedRealm = r;
+  const battle = currentScreen() === 'match' || currentScreen() === 'versus';
+  sound.ambience(r === 'underworld' ? 'amb-abyss' : 'amb-hall');
+  sound.music(battle ? `battle-${r}` : 'menu');
+}
+sound.bindUi(document);
+onWipe(() => sound.play('ui-wipe'));
+onToast((kind) => { if (kind === 'err') sound.play('ui-error'); });
+document.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 's' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  setPref('sound', prefs.sound === 'off' ? 'on' : 'off');
+  toast(prefs.sound === 'off' ? 'Sound off (S)' : 'Sound on (S)');
+});
+/** A move's beats, as the armies play them out (Army.onCue). */
+const CUE_SOUND: Record<Cue, string> = { move: 'piece-move', leap: 'piece-leap', castle: 'castle', land: 'piece-land', strike: 'strike', ascend: 'promote' };
+function onCue(cue: Cue): void {
+  sound.play(CUE_SOUND[cue]);
+  if (cue === 'strike') sound.play('death', { delay: 0.22 });   // the victim breaks as the blow lands
+}
+
 // ------------------------------------------------------------------ the menu shell
 const app: App = {
   snapshot, web3, chain,
   startSkirmish: (side, d, r) => { difficulty = d; realmChoice = r; void startGame(side); },
-  preview: (r, side) => { accent(side); if (realm) void realm.load(r).then(() => vfx?.embers(new THREE.Color(realm!.preset.embers))); },
+  preview: (r, side) => { accent(side); syncBeds(r); if (realm) void realm.load(r).then(() => vfx?.embers(new THREE.Color(realm!.preset.embers))); },
   realmFor,
   openStakes: () => { modal('zkLTC stakes', wagerRoot); wager.refresh(); },
   openRanked,
@@ -135,6 +161,7 @@ const versus = versusScreen();
 register(versus);
 register(hud.screen());
 onScreen((s) => {
+  syncBeds();
   if (!stage) return;
   stage.paused = !!s.opaque;
   // the phone HUD needs the board's place on screen: measure once the opening camera flight has settled
@@ -172,6 +199,7 @@ async function ensureStage(): Promise<void> {
   board = new BoardView(set);
   stage.scene.add(board.group);
   army = new Army(board.plinths, vfx);
+  army.onCue = onCue;
   stage.scene.add(army.group);
   marks = new RoleMarks(stage.camera, canvas);
   marks.onPress = onMarkPress;
@@ -270,6 +298,7 @@ const startSquares = (() => {
 async function prepare(side: Side, seed: string, owned: Set<string>, names: [string, string], subs: [string, string], relay: boolean): Promise<void> {
   you = side;
   const r = realmFor(realmChoice, side);
+  bedRealm = r;
   const rosters = [buildRoster(snapshot.cards, 0, owned, seed), buildRoster(snapshot.cards, 1, owned, seed)] as const;
   versus.show({ you: side, names, subs, gods: [rosters[0].get('e1') ?? null, rosters[1].get('e8') ?? null], realm: REALM_NAME[r] });
   await go('versus', { wipe: true });
@@ -311,6 +340,8 @@ async function prepare(side: Side, seed: string, owned: Set<string>, names: [str
   stage!.camera.position.set(side === 0 ? 9 : -9, 14, (side === 0 ? 11.5 : -11.5) * 1.4);
   stage!.camera.lookAt(stage!.controls.target);
   await go('match', { wipe: true });
+  sound.duck(0.45, 2, 2.5);
+  sound.play('match-start', { delay: 0.2 });
   setTimeout(() => { if (stage) stage.governing = true; }, 3000); // let the first frames settle (shader compiles) before judging
   startedAt = Date.now();
 }
@@ -420,6 +451,7 @@ async function onStep(move: Move | null, state: ChessState): Promise<void> {
     const king = kingOf(state.turn);
     if (king) { board!.setCheck(king.square); vfx!.check(king.group.position); marks!.check = king; }
     hud.cine('Check', 'red', state.turn === you ? 'Your god-king is threatened' : 'The enemy god-king is threatened');
+    sound.play('check', { delay: 0.1 });
     hud.flash('check');
   }
   hud.setTurn(state.turn, state.over, m instanceof LocalMatch && state.turn !== you);
@@ -450,6 +482,8 @@ function finish(state: ChessState, m: Match): void {
   if (!draw) { const king = kingOf(state.winner as Side); if (king) vfx!.finale(king.group.position, king.color); }
   hud.cine(draw ? (state.reason === 'stalemate' ? 'Stalemate' : 'Draw') : youWon ? 'Victory' : 'Defeat', draw ? 'ice' : youWon ? 'gold' : 'red', detail);
   hud.flash(youWon ? 'victory' : 'defeat');
+  sound.duck(0.2, 5, 3);
+  sound.play(draw ? 'draw' : youWon ? 'victory' : 'defeat', { delay: 0.3 });
   const relay = m instanceof RelayMatch;
   let footnote = relay ? 'The host node replays and settles the ledger; claim the pot from Stakes once it has.' : undefined;
   if (!relay) {
@@ -522,6 +556,7 @@ function select(piece: PieceView): void {
   clearSelection();
   selected = piece;
   piece.setHighlight(true);
+  sound.play('select');
   legal = match!.legalMoves().filter((m) => m.from === piece.square);
   board!.setSelected(piece.square);
   const captures = new Set(legal.filter((m) => m.captured).map((m) => m.to));
@@ -666,6 +701,7 @@ addEventListener('resize', () => { clearTimeout(hudT); hudT = window.setTimeout(
 await ensureStage();
 boot(0.55, 'Opening the realm');
 await realm!.load(realmFor(prefs.realm, prefs.side));
+syncBeds(realmFor(prefs.realm, prefs.side));
 vfx!.embers(new THREE.Color(realm!.preset.embers));
 accent(prefs.side);
 boot(0.75, 'Awakening the gods');

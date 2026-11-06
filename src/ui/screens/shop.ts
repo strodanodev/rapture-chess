@@ -11,6 +11,7 @@ import { embers, h, icon, toast } from '../dom';
 import { go, pageHead, type Screen } from '../router';
 import { walletChip } from '../widgets';
 import { emblem } from '../brand';
+import { sound } from '../../audio';
 
 const KIND_VAR: Record<string, string> = { God: '--r-god', Titan: '--r-titan', King: '--r-king', Demigod: '--r-demigod', Mortal: '--r-mortal' };
 
@@ -101,6 +102,7 @@ export function shopScreen(app: App): Screen {
     try {
       const tokens = await openPack(app.web3.wallet, app.chain, id, (s) => stage(s));
       stage('Your champions have arrived', false);
+      sound.play('ui-confirm');
       const cards = await app.web3.identify(tokens).catch(() => [] as Card[]);
       void app.web3.refresh();
       reveal(cards, tokens.length);
