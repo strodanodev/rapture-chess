@@ -10,6 +10,7 @@ import { deviceTier } from '../../scene/device';
 import { go, type Screen } from '../router';
 import { emblem, gvtMark, titleArt } from '../brand';
 import { forgeLink, walletChip } from '../widgets';
+import { install, installOffer, onInstallChange } from '../../pwa/install';
 
 export function homeScreen(app: App): Screen & { setMate(name: string, where: string, san: string): void } {
   // a menu entry: a button, or with no onClick the Shop, a link to the Forge in a new tab
@@ -19,6 +20,12 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
     const b = onClick ? h('button', { class: 'menu-item', on: { click: onClick } }, ...parts) : forgeLink(app, 'menu-item', ...parts);
     return { b, refresh: () => { s.textContent = sub(); } };
   };
+  // beside the wallet, only while the browser offers an install (on iOS, where it explains Add to Home Screen); see
+  // pwa/install.ts. The menu has no room for another row on a laptop screen.
+  const installBtn = h('button', { class: 'icon-btn', title: 'Install app', aria: { label: 'Install app' }, data: { install: '' }, on: { click: () => void install() } }, icon('install'));
+  const showInstall = (): void => { installBtn.hidden = !installOffer(); };
+  showInstall();
+  onInstallChange(showInstall);
   const items = [
     menuItem('swords', 'Ranked', () => 'LitNode mesh · zkLTC stakes', () => app.openRanked()),
     menuItem('grid', 'Armory', () => `${app.snapshot.cards.length} champions · ${app.web3.owned.size} held`, () => void go('armory')),
@@ -79,7 +86,7 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
   const el = h('section', { class: 'home', aria: { label: 'Main menu' } },
     h('div', { class: 'home-scrim' }),
     embers(18, ['#ffc95e', '#ff7438', '#ffe2a0']),
-    h('header', { class: 'home-top' }, h('div', { class: 'home-brand' }, gvtMark(), h('span', { class: 'badge outline live', text: 'Season 0 · Liteforge' })), walletChip(app)),
+    h('header', { class: 'home-top' }, h('div', { class: 'home-brand' }, gvtMark(), h('span', { class: 'badge outline live', text: 'Season 0 · Liteforge' })), h('div', { class: 'home-top-right' }, installBtn, walletChip(app))),
     h('div', { class: 'home-main' }, logo, plaque, menu),
     feature,
     h('footer', { class: 'home-foot' }, h('span', { text: 'Built with Deckwright · three.js · LitNode' })));

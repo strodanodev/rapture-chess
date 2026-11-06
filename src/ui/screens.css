@@ -53,6 +53,7 @@
 .home { display: grid; grid-template-columns: minmax(340px, 480px) 1fr minmax(240px, 300px); grid-template-rows: auto 1fr auto; padding: calc(var(--safe-t) + 20px) calc(var(--safe-r) + 32px) calc(var(--safe-b) + 18px) calc(var(--safe-l) + 40px); }
 .home-scrim { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 46% 52% at 16% 70%, rgba(5, 4, 9, 0.9), rgba(5, 4, 9, 0.55) 60%, transparent 100%), linear-gradient(90deg, rgba(5, 4, 9, 0.3) 0%, rgba(5, 4, 9, 0) 40%), linear-gradient(0deg, rgba(5, 4, 9, 0.85), transparent 22%); }
 .home-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; z-index: 1; }
+.home-top-right { display: flex; align-items: center; gap: 10px; }
 .home-main { grid-column: 1; grid-row: 2; align-self: center; display: grid; gap: 34px; position: relative; z-index: 1; }
 .logo { display: grid; justify-items: start; gap: 4px; }
 .logo-emblem { position: relative; width: 74px; height: 74px; margin-bottom: 10px; filter: drop-shadow(0 0 10px rgba(255, 190, 80, 0.55)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8)); }
