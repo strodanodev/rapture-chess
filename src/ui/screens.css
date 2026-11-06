@@ -384,6 +384,13 @@
 .steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; color: #d6cdbc; line-height: 1.5; font-size: 14px; }
 .steps b { color: var(--gold-1); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.mm-status { margin: 0; min-height: 1.5em; color: #d6cdbc; font-size: 14px; line-height: 1.5; }
+.mm-status:empty { display: none; }
+.mm-status.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 10px; border-radius: 50%; background: var(--gold-1); vertical-align: 1px; animation: mm-pulse 1.2s ease-in-out infinite; }
+.mm-status.err { color: #ff9b7a; }
+.ranked-info .note a { color: var(--gold-1); }
+@keyframes mm-pulse { 0%, 100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1); } }
+.still .mm-status.busy::before { animation: none; opacity: .8; }
 .wager-host { display: grid; }
 
 /* ------------------------------------------------------------------ versus */

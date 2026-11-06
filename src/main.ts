@@ -30,11 +30,13 @@ import { RoleMarks } from './ui/marks';
 import { LocalMatch, type Match, type MatchEvents } from './game/session';
 import { RelayMatch } from './game/relay';
 import { mountWager, type WagerPanel } from './wager';
+import { canHoldKey, meshNode, playerKey, playerKeyId } from './litnode/standalone';
+import { openRanked as rankedPanel } from './ui/ranked';
 import { encodeMove, offerDraw, type ChessState, type PieceType, type Side } from './rules/chessRules';
 import { buildRoster, type Card, type Collection } from './roster';
 import { createWeb3Link } from './web3/wallet';
 import { createReadChain } from './web3/rpc';
-import { ARCADE_URL, type App } from './ui/app';
+import type { App } from './ui/app';
 import { h, icon, modal, toast } from './ui/dom';
 import { DIFFICULTY, onPrefs, prefs, recordResult, type Difficulty, type RealmChoice } from './ui/prefs';
 import { currentScreen, go, onScreen, register, resetStack } from './ui/router';
@@ -89,13 +91,16 @@ const wagerRoot = h('div', { class: 'wager-host' });
 const wager: WagerPanel = mountWager({
   root: wagerRoot,
   web3,
-  playerKey: () => (match instanceof RelayMatch ? match.playerId : arcade?.init.player?.id ?? null),
-  nodeUrl: () => (match instanceof RelayMatch ? match.nodeUrl : arcade?.init.node?.url ?? null),
+  // in a match its key; in the arcade's frame the arcade's key; on the game's own page the key it queues with
+  playerKey: () => (match instanceof RelayMatch ? match.playerId : inArcade ? arcade?.init.player?.id ?? null : playerKeyId()),
+  nodeUrl: () => (match instanceof RelayMatch ? match.nodeUrl : inArcade ? arcade?.init.node?.url ?? null : meshNode()),
 });
 // Opened by the arcade without a match ("Play now"): the shell still names the player, so a stake can be made before
 // queueing instead of against the first move's clock. A placed match seats through its own shell (RelayMatch.placed).
 let arcade: CabinetShell | null = null;
-if (!launch.matchId && window.parent !== window) connectShell().then((s) => { arcade = s; wager.refresh(); }, () => { /* not the arcade */ });
+const inArcade = window.parent !== window;
+if (!inArcade && canHoldKey()) void playerKey().then(() => wager.refresh(), () => { /* no key here: stakes stay off */ });
+if (!launch.matchId && inArcade) connectShell().then((s) => { arcade = s; wager.refresh(); }, () => { /* not the arcade */ });
 
 const realmFor = (c: RealmChoice, side: Side): RealmId => (c === 'valhalla' || c === 'underworld' ? c : side === 0 ? 'valhalla' : 'underworld');
 const accent = (side: Side) => stage?.setAccentColors(side === 0 ? 0x38a8ff : 0xff6a2a, side === 0 ? 0xff6a2a : 0x38a8ff);
@@ -115,16 +120,7 @@ const app: App = {
 };
 
 function openRanked(): void {
-  const body = h('div', { class: 'ranked-info' },
-    h('p', { class: 'lede', text: 'Ranked Rapture Chess runs on the LitNode mesh. You queue in the LitVM arcade; a bonded node places the match, hosts it, replays every move and signs the result, and MatchBook finalizes it on chain.' }),
-    h('ol', { class: 'steps' },
-      h('li', null, h('b', { text: 'Stake (optional).' }), ' Put zkLTC behind your arcade player key. The winner takes twice the smaller stake; a draw moves nothing.'),
-      h('li', null, h('b', { text: 'Queue in the arcade.' }), ' Pick Rapture Chess; the mesh pairs you and opens this table.'),
-      h('li', null, h('b', { text: 'Claim.' }), ' When the node has settled, claim the pot here with its signed result.')),
-    h('div', { class: 'row-actions' },
-      h('a', { class: 'btn primary', href: ARCADE_URL, target: '_blank', rel: 'noopener' }, icon('external'), 'Open the arcade'),
-      h('button', { class: 'btn', on: { click: () => { m.close(); app.openStakes(); } } }, icon('stake'), 'Stakes')));
-  const m = modal('Ranked on LitNode', body);
+  rankedPanel({ chain, inArcade, openStakes: app.openStakes, play: (p) => void startRelay(() => RelayMatch.placed(events, p)) });
 }
 
 const home = homeScreen(app);
