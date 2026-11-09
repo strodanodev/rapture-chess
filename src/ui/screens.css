@@ -52,7 +52,7 @@
 /* ------------------------------------------------------------------ home */
 .home { display: grid; grid-template-columns: minmax(340px, 480px) 1fr minmax(240px, 300px); grid-template-rows: auto 1fr auto; padding: calc(var(--safe-t) + 20px) calc(var(--safe-r) + 32px) calc(var(--safe-b) + 18px) calc(var(--safe-l) + 40px); }
 .home-scrim { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 46% 52% at 16% 70%, rgba(5, 4, 9, 0.9), rgba(5, 4, 9, 0.55) 60%, transparent 100%), linear-gradient(90deg, rgba(5, 4, 9, 0.3) 0%, rgba(5, 4, 9, 0) 40%), linear-gradient(0deg, rgba(5, 4, 9, 0.85), transparent 22%); }
-.home-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; z-index: 1; }
+.home-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; z-index: 4; }   /* above the title's flames (on a phone the title sits right under it) */
 .home-top-right { display: flex; align-items: center; gap: 10px; }
 .home-main { grid-column: 1; grid-row: 2; align-self: center; display: grid; gap: 34px; position: relative; z-index: 1; }
 .logo { display: grid; justify-items: start; gap: 4px; }
@@ -108,7 +108,7 @@ a.menu-item:hover .mi-arrow svg { transform: translate(2px, -2px); }
 .mate-plaque { position: fixed; left: 50%; bottom: calc(var(--safe-b) + 16px); transform: translateX(-50%); z-index: 1; white-space: nowrap; display: grid; justify-items: center; gap: 2px; padding: 10px 22px; text-align: center;
   border-top: 1px solid var(--line); background: linear-gradient(180deg, rgba(10, 8, 14, 0.7), rgba(10, 8, 14, 0)); }
 .mate-plaque b { font-size: 15px; letter-spacing: 0.18em; color: var(--ivory); }
-.mate-plaque span:not(.eyebrow) { font-size: 12px; color: var(--muted); }
+.mate-plaque span:not(.eyebrow) { font-size: 12px; color: #bdb29d; text-shadow: 0 1px 4px #000; }
 .mate-plaque .mp-san { color: var(--gold-1); font-weight: 600; letter-spacing: 0.08em; }
 .mate-plaque.swap { animation: rise 0.6s var(--ease-out); }
 .home-foot { grid-column: 1 / -1; grid-row: 3; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); position: relative; z-index: 1; }
