@@ -187,7 +187,7 @@ export class TitleFX {
     const g = c.getContext('2d', { willReadFrequently: true })!;
     g.drawImage(this.img, 0, 0, sw, sh);
     const a = g.getImageData(0, 0, sw, sh).data;
-    // above the image is open air (the render is cropped tight, so RAPTURE's cap line is at its very top)
+    // above the image is open air (the lockup is cropped tight, so RAPTURE's cap line is at its very top)
     const at = (x: number, y: number) => (y < 0 ? 0 : a[(y * sw + x) * 4 + 3]);
     const clear = Math.round(sh * 0.1);
     const tx = tr.left - cr.left, ty = tr.top - cr.top;
@@ -204,10 +204,11 @@ export class TitleFX {
         break;
       }
     }
-    // the fire crowns RAPTURE: keep the tops on (or near) its cap line, not the slopes of the A or the R's leg, and
-    // lift them a little so the flames start above the gold instead of washing over it
+    // the fire crowns RAPTURE: keep the tops on (or near) its cap line, not the slopes of the A or the R's leg or the
+    // CHESS horns below, and lift them a little so the flames start above the gold instead of washing over it (both
+    // measured on the width: the lockup's height is mostly the CHESS mark)
     const cap = Math.max(...this.upper.map((p) => p.y));
-    this.upper = this.upper.filter((p) => cap - p.y < tr.height * 0.12).map((p) => ({ x: p.x, y: p.y + tr.height * 0.03 }));
+    this.upper = this.upper.filter((p) => cap - p.y < tr.width * 0.03).map((p) => ({ x: p.x, y: p.y + tr.width * 0.008 }));
     this.build();
   }
 

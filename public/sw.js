@@ -6,7 +6,7 @@
  * the cache once seen. Cross-origin requests (RPC, relay, wallet) are never touched.
  */
 const VERSION = 'rapture-chess-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/brand/emblem.webp', '/brand/rapture-chess.webp', '/brand/gods-vs-titans.webp'];
+const SHELL = ['/', '/manifest.webmanifest', '/brand/emblem.webp', '/brand/rapture-chess.2.webp', '/brand/gods-vs-titans.webp'];
 const IMMUTABLE = /^\/(assets|models|art|draco|ui|brand)\//;
 
 self.addEventListener('install', (event) => {

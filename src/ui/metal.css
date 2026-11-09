@@ -68,9 +68,14 @@
 @media (max-width: 760px), (max-height: 520px) and (max-width: 1000px) {
   .menu-item { border-width: 12px; border-image-width: 14px; padding: 4px 2px; min-height: 84px; }
 }
+/* short desktop windows (a laptop's browser, 521-846 px tall): slimmer plates, so the title under the header keeps its size */
+@media (min-width: 761px) and (min-height: 521px) and (max-height: 846px) {
+  .menu-item { border-width: 10px; border-image-width: 12px; }
+  .play-btn { --h: 52px; }
+}
 
 /* ------------------------------------------------------------------ the title's fire and lightning (src/ui/titlefx.ts) */
-.title-fx { position: absolute; left: -9%; right: -9%; top: -62%; bottom: -16%; width: 118%; height: 178%; pointer-events: none; z-index: 2; }
+.title-fx { position: absolute; left: -9%; right: -9%; top: -36%; width: 118%; height: 146%; pointer-events: none; z-index: 2; }
 .title-art.fx-on .title-sparks { display: none; }
 .title-art .title-img { transition: filter 0.35s ease-out; }
 .title-art.zap .title-img { transition: none; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 16px rgba(140, 190, 255, 0.85)) brightness(1.3); }
