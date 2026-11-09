@@ -1,12 +1,13 @@
 /**
- * The brand art: the emblem (the winged caduceus), the Rapture Chess title (bevelled gold, rendered in Blender by
- * scripts/render-logo.py) and the Gods vs Titans mark the game belongs to. All are plain images in public/brand.
+ * The brand art: the emblem (the winged caduceus), the Rapture Chess title (RAPTURE in bevelled gold from
+ * scripts/render-logo.py over the chrome CHESS logo, composed by scripts/build-lockup.py) and the Gods vs Titans mark
+ * the game belongs to. All are plain images in public/brand, versioned by name (the service worker caches them for good).
  */
 import { h } from './dom';
 
 const BRAND = `${import.meta.env.BASE_URL}brand/`;
 export const EMBLEM_URL = `${BRAND}emblem.webp`;
-export const TITLE_URL = `${BRAND}rapture-chess.webp`;
+export const TITLE_URL = `${BRAND}rapture-chess.2.webp`;
 export const GVT_URL = `${BRAND}gods-vs-titans.webp`;
 
 const img = (src: string, cls: string, alt: string, eager = false): HTMLImageElement => {

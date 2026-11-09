@@ -14,19 +14,25 @@
 <meta name="description" content="3D chess on LitVM: the Rapture ARC 1 champions take the board. Built with Deckwright and three.js, settled on LitNode." />
 <link rel="icon" href="/brand/emblem-64.png" type="image/png" />
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
-<link rel="preload" href="/brand/rapture-chess.webp" as="image" />
+<link rel="preload" href="/brand/rapture-chess.2.webp" as="image" fetchpriority="high" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <style>
   /* the boot screen paints before any script or stylesheet arrives */
   html, body { margin: 0; height: 100%; background: #050409; overflow: hidden; }
   #boot { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 42%, #1c1424 0%, #07060b 62%, #030205 100%); color: #ffc95e; font-family: Georgia, 'Palatino Linotype', serif; transition: opacity 0.8s ease, visibility 0.8s; }
   #boot.done { opacity: 0; visibility: hidden; }
-  #boot .b-in { display: grid; justify-items: center; gap: 18px; width: min(360px, 78vw); text-align: center; }
+  #boot .b-in { display: grid; justify-items: center; gap: 18px; width: min(420px, 84vw); text-align: center; }
   #boot .b-emb { position: relative; width: 132px; height: 132px; }
   #boot .b-emb svg, #boot .b-mark { position: absolute; inset: 0; width: 100%; height: 100%; }
   #boot .b-mark { inset: 14%; width: 72%; height: 72%; object-fit: contain; filter: drop-shadow(0 0 10px rgba(255, 190, 80, 0.5)); }
   #boot .b-gvt { height: 34px; width: auto; opacity: 0.9; }
-  #boot .b-title { width: 100%; height: auto; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.85)); }
+  /* the title lockup (RAPTURE over the chrome CHESS mark): a warm bloom behind it, a light sweep masked to the letters */
+  #boot .b-logo { position: relative; width: 100%; aspect-ratio: 1279 / 718; isolation: isolate; animation: brise 1.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #boot .b-logo::before { content: ''; position: absolute; inset: 14% 2% -4%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 150, 60, 0.3), rgba(255, 120, 40, 0.08) 60%, transparent); }
+  #boot .b-logo::after { content: ''; position: absolute; inset: 0; mix-blend-mode: screen; background: linear-gradient(105deg, transparent 38%, rgba(255, 248, 225, 0.8) 50%, transparent 62%) no-repeat; background-size: 250% 100%; background-position: 160% 0;
+    -webkit-mask: url('/brand/rapture-chess.2.webp') center / 100% 100% no-repeat; mask: url('/brand/rapture-chess.2.webp') center / 100% 100% no-repeat; animation: bshine 3.4s ease-in-out infinite 0.9s; }
+  #boot .b-title { display: block; width: 100%; height: 100%; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.9)); }
+  #boot .b-gvt { margin-top: -8px; }
   #boot .b-spin { animation: bspin 6s linear infinite; opacity: 0.85; }
   #boot .b-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 190, 80, 0.22), transparent 62%); animation: bpulse 2.4s ease-in-out infinite; }
   #boot h1 { margin: 6px 0 0; font-weight: 600; font-size: 30px; letter-spacing: 0.32em; text-transform: uppercase; color: #fff1cc; text-indent: 0.32em; }
@@ -36,7 +42,15 @@
   #boot #boot-text { font: 11px/1.4 system-ui, sans-serif; letter-spacing: 0.28em; text-transform: uppercase; color: #9a8f7a; min-height: 1.4em; }
   @keyframes bspin { to { transform: rotate(360deg); } }
   @keyframes bpulse { 50% { opacity: 0.45; transform: scale(0.92); } }
-  @media (prefers-reduced-motion: reduce) { #boot .b-spin, #boot .b-glow { animation: none; } }
+  @keyframes brise { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+  @keyframes bshine { 0% { background-position: 160% 0; } 45%, 100% { background-position: -60% 0; } }
+  /* short screens (a phone on its side): a smaller emblem and title, so the bar and its text stay on screen */
+  @media (max-height: 560px) {
+    #boot .b-in { gap: 10px; width: min(320px, 56vh, 80vw); }
+    #boot .b-emb { width: 76px; height: 76px; }
+    #boot .b-gvt { height: 26px; margin-top: -4px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #boot .b-spin, #boot .b-glow, #boot .b-logo, #boot .b-logo::after { animation: none; } }
   #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 </style>
 </head>
@@ -51,7 +65,7 @@
       <svg class="b-spin" viewBox="0 0 120 120" fill="none" stroke="currentColor"><circle cx="60" cy="60" r="57" stroke-width="1" stroke-dasharray="2 6" /><path d="M60 1v12M60 107v12M1 60h12M107 60h12" stroke-width="2" /></svg>
       <img class="b-mark" src="/brand/emblem.webp" alt="" />
     </div>
-    <img class="b-title" src="/brand/rapture-chess.webp" alt="Rapture Chess" />
+    <div class="b-logo"><img class="b-title" src="/brand/rapture-chess.2.webp" alt="Rapture Chess" /></div>
     <img class="b-gvt" src="/brand/gods-vs-titans.webp" alt="Gods vs Titans" />
     <div class="b-track"><div id="boot-bar"></div></div>
     <p id="boot-text">Lighting the braziers</p>

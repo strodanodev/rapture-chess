@@ -62,10 +62,12 @@ blender -b --python scripts/export-avatars.py -- <dir of slug.glb> public/models
 # the two arenas -> public/models/valhalla.glb and underworld.glb, with check renders; textured with the CC0
 # Poly Haven sets in scripts/textures (512 px copies of the 1k sets; README.txt there) and merged by material
 blender -b --python scripts/build-arenas.py -- public/models renders
-# the main-menu title: bevelled gold Cinzel rendered to an image (crop and convert to public/brand/rapture-chess.webp)
+# the main-menu title: RAPTURE in bevelled gold Cinzel (renders/logo.png), then the lockup over the chrome CHESS logo
+# (renders/chess-logo.jpg, on a green screen: keyed out) -> public/brand/rapture-chess.2.webp (bump the number on a change)
 python scripts/woff2ttf.py node_modules/@fontsource/cinzel/files/cinzel-latin-900-normal.woff scripts/fonts/Cinzel-Black.ttf
 python scripts/woff2ttf.py node_modules/@fontsource/cinzel/files/cinzel-latin-700-normal.woff scripts/fonts/Cinzel-Bold.ttf
 blender -b --python scripts/render-logo.py -- renders/logo.png
+python scripts/build-lockup.py renders/chess-logo.jpg renders/logo.png public/brand/rapture-chess.2.webp
 ```
 
 The arena script also runs inside a live Blender through MCP (`sys.argv = ["", "--", out_dir, ...]`, then exec the file):

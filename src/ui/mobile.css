@@ -33,7 +33,7 @@
 /* ------------------------------------------------------------------ small portrait (iPhone 8 / SE and the like) */
 @media (max-width: 600px) and (max-height: 700px) and (orientation: portrait) {
   .logo-emblem { display: none; }
-  .logo-word { width: min(280px, 76vw); }
+  .logo-word { width: min(270px, 72vw); }
   .menu-item { min-height: 70px; padding: 8px 4px; gap: 4px; }
   .home-menu > .menu-item:nth-child(n + 5) { min-height: 54px; }
   .btn.play-btn { --h: 54px; }
@@ -52,7 +52,7 @@
   .home-main { grid-column: 1; grid-row: 2; align-self: center; grid-template-rows: auto auto; gap: 8px; }
   .logo { justify-items: start; text-align: left; }
   .logo-emblem { display: none; }
-  .logo-word { width: min(220px, 100%); }
+  .logo-word { width: min(240px, 100%, 52vh); }
   .mate-plaque { position: fixed; left: auto; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 6px); grid-row: auto; margin: 0; }
   .home-menu { grid-row: auto; gap: 6px; }
   .btn.play-btn { --h: 46px; font-size: 15px; margin-bottom: 0; }
