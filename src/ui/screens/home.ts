@@ -1,7 +1,7 @@
 /** The main menu over the live 3D arena: logo, the menu, a featured champion, and the wallet. */
 import type { Card } from '../../roster';
 import type { App } from '../app';
-import { championCard, ROLE_OF } from '../cardview';
+import { championCard } from '../cardview';
 import { embers, h, icon, stagger } from '../dom';
 import type { IconName } from '../icons';
 import { onPrefs, prefs, record } from '../prefs';
@@ -52,7 +52,7 @@ export function homeScreen(app: App): Screen & { setMate(name: string, where: st
     const card = championCard(c, { owned: app.web3.owned.has(c.tokenId), eager: true, tilt: true });
     card.classList.add('swap-in');
     featureSlot.replaceChildren(card);
-    featureCap.replaceChildren(h('p', { class: 'epithet', text: c.epithet }), h('p', { class: 'kicker', text: `${c.element} · ${ROLE_OF[c.kind]}` }));
+    featureCap.replaceChildren(h('p', { class: 'epithet', text: c.epithet }), h('p', { class: 'kicker', text: c.element })   /* the role and faction are on the card itself */);
   };
 
   // the title, with fire and lightning playing over it (its own small three.js canvas; off with reduced motion)
