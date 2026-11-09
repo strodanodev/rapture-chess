@@ -154,7 +154,8 @@ export class Realm {
       this.fires.push(m);
       return m;
     }
-    if (/rune/.test(n)) { const m = src.clone(); m.emissiveIntensity = 2.2; m.color.set(0x05050a); return m; }
+    // runes: bright enough to bloom blue, not so bright the bloom burns them to white on the pillars
+    if (/rune/.test(n)) { const m = src.clone(); m.emissiveIntensity = 1.3; m.color.set(0x05050a); return m; }
     // Poly Haven stone, ground and rock (scripts/build-arenas.py): keep the maps, darken them to the realm's mood
     if (src.map) {
       const m = src.clone();

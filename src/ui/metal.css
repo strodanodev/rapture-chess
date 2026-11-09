@@ -34,6 +34,9 @@
 .btn.lg { --h: 58px; }
 .btn.sm { --h: 40px; font-size: 11px; padding: 0 2px; }
 .play-btn { --h: 66px; }
+/* Play leads the menu: a larger label, and its light sweep (theme.css .pulse) brighter than the other buttons' */
+.home .play-btn { font-size: 20px; }
+.home .play-btn.pulse::after { background: linear-gradient(105deg, transparent 38%, rgba(255, 250, 228, 0.62) 50%, transparent 62%); }
 .btn:disabled { filter: grayscale(0.85) brightness(0.55); }
 
 /* ------------------------------------------------------------------ medallions (the round icon buttons) */
