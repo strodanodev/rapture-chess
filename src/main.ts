@@ -216,7 +216,7 @@ async function ensureStage(): Promise<void> {
   if (import.meta.env.DEV) {
     // debug hook for the browser console: screen position of a square, and the live objects
     (window as unknown as { rc: unknown }).rc = {
-      get stage() { return stage; }, get army() { return army; }, get match() { return match; }, get realm() { return realm; }, hud, go,
+      get stage() { return stage; }, get army() { return army; }, get match() { return match; }, get realm() { return realm; }, hud, go, mate: (i: number) => { mateIndex = i - 1; return tableau(); },
       screen(sq: string) {
         const v = squareToWorld(sq, 0.3).project(stage!.camera), r = canvas.getBoundingClientRect();
         return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };

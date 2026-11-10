@@ -170,6 +170,8 @@ export class Stage {
   private ceiling = QUALITIES.length - 1;
   private ceilingUntil = 0;
   private penaltyMs = 30_000;
+  /** Good seconds before the resolution climbs a notch: 4, doubled by every step down. */
+  private upWait = 4;
   /** Frames before this time are not judged (a scene swap is uploading). */
   private holdUntil = 0;
 
@@ -282,7 +284,12 @@ export class Stage {
 
     const saved = localStorage.getItem('rapture-chess.quality') as Quality | 'auto' | null;
     this.auto = !saved || saved === 'auto';
-    this.setQuality(saved && saved !== 'auto' ? saved : startQuality());
+    if (saved && saved !== 'auto') this.setQuality(saved);
+    else {
+      const gl = this.renderer.getContext(), info = gl.getExtension('WEBGL_debug_renderer_info');
+      const start = startQuality(info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '');
+      this.setQuality(start.quality, start.scale);
+    }
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -455,19 +462,22 @@ export class Stage {
     if (over) {
       this.highStreak = 0;
       // a resolution notch on the first bad second; a preset only after two in a row at the lowest resolution
-      if (++this.lowStreak >= (atFloor ? 2 : 1)) { this.lowStreak = 0; this.later(() => this.stepDown()); }
+      // far under (below 40): straight to the lowest resolution, not three resizes a second apart
+      if (++this.lowStreak >= (atFloor ? 2 : 1)) { this.lowStreak = 0; const far = w.fps < 40; this.later(() => this.stepDown(far)); }
     } else if (under) {
       this.lowStreak = 0;
       // resolution comes back after four good seconds, a preset after ten
-      if (++this.highStreak >= (this.scaleIndex ? 4 : 10)) { this.highStreak = 0; this.later(() => this.stepUp()); }
+      if (++this.highStreak >= (this.scaleIndex ? this.upWait : 10)) { this.highStreak = 0; this.later(() => this.stepUp()); }
     } else {
       this.lowStreak = 0;
       this.highStreak = Math.max(0, this.highStreak - 1);
     }
   }
-  private stepDown(): void {
+  private stepDown(far = false): void {
     const i = QUALITIES.indexOf(this.quality);
-    if (this.scaleIndex < SCALES.length - 1) { this.scaleIndex++; this.applyResolution(); return; }
+    // each fall makes the next climb wait twice as long, so a GPU on the edge settles instead of resizing every few seconds
+    this.upWait = Math.min(this.upWait * 2, 64);
+    if (this.scaleIndex < SCALES.length - 1) { this.scaleIndex = far ? SCALES.length - 1 : this.scaleIndex + 1; this.applyResolution(); return; }
     if (i === 0) return;
     // bar the preset we are leaving, for longer each time it fails
     this.ceiling = i;
@@ -589,6 +599,7 @@ export class Stage {
     // tweens): tick the clocks coarsely while hidden so the game logic never waits on a frame that will not come.
     setInterval(() => { if (document.hidden) { tweens.update(0.25); for (const fn of this.updaters) fn(0.25, performance.now() / 1000); } }, 250);
     this.started = true;
+    this.hold(5000); // the first seconds are loading and compiling: they say nothing about the frame rate the device holds
     this.renderer.setAnimationLoop(() => {
       const t0 = performance.now();
       // quality and resolution changes land here, before the draw: the canvas they reset is painted in this same task

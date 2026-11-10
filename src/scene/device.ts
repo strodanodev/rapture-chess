@@ -32,6 +32,13 @@ export const deviceTier: DeviceTier = (() => {
   return 'phone';
 })();
 
-/** The preset a device starts at when the quality is left to the governor. */
-export const startQuality = (): 'lite' | 'low' | 'medium' | 'high' =>
-  deviceTier === 'desktop' ? 'high' : deviceTier === 'weak' ? 'lite' : iOS ? 'low' : 'medium';
+/** A laptop or desktop running the page on its integrated GPU. Chrome on Windows ignores `powerPreference` and puts
+ *  WebGL on the integrated chip of a two-GPU laptop. Measured on an Iris Xe: High holds 15 fps and only Lite holds
+ *  60, so it starts there and the governor climbs if the GPU has more to give. */
+export const integratedGpu = (renderer: string): boolean =>
+  /\bIntel\b(?!.*\bArc\b)|Radeon(\(TM\))? Graphics|SwiftShader|llvmpipe|Basic Render/i.test(renderer);
+
+/** The preset a device starts at when the quality is left to the governor, and the resolution step inside it. */
+export const startQuality = (renderer = ''): { quality: 'lite' | 'low' | 'medium' | 'high'; scale: number } =>
+  deviceTier === 'desktop' ? (integratedGpu(renderer) ? { quality: 'lite', scale: 2 } : { quality: 'high', scale: 0 })
+    : { quality: deviceTier === 'weak' ? 'lite' : iOS ? 'low' : 'medium', scale: 0 };
