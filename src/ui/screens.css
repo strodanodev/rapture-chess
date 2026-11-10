@@ -111,6 +111,7 @@ a.menu-item:hover .mi-arrow svg { transform: translate(2px, -2px); }
 .mate-plaque span:not(.eyebrow) { font-size: 12px; color: #bdb29d; text-shadow: 0 1px 4px #000; }
 .mate-plaque .mp-san { color: var(--gold-1); font-weight: 600; letter-spacing: 0.08em; }
 .mate-plaque.swap { animation: rise 0.6s var(--ease-out); }
+.mate-plaque:not(.swap) { visibility: hidden; }   /* nothing staged on the board yet: no caption for an empty board */
 .home-foot { grid-column: 1 / -1; grid-row: 3; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); position: relative; z-index: 1; }
 
 /* wider screens: the title takes the height the rest of the column leaves, so the menu always fits under it. --room is
