@@ -113,3 +113,9 @@
   .play-wrap { justify-content: center; padding-left: calc(var(--safe-l) + 14px); }
   .play-panel { width: min(600px, 100%); }
 }
+
+/* phones upright: the title clear of the top bar's buttons, and the two wide buttons' labels clear of their frames */
+@media (max-width: 760px) and (orientation: portrait) {
+  .home .logo-word { margin-top: 14px; }
+  .home-menu > .menu-item:nth-child(n + 5) .mi-text .t { letter-spacing: 0.05em; }
+}
