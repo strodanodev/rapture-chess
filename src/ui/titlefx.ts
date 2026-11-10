@@ -222,12 +222,12 @@ export class TitleFX {
     // the flame tongues: big soft sprites launched upward, yellow to orange to a dark red as they thin out
     const flames = new ParticleSystem({
       duration: 1, looping: true, worldSpace: false, prewarm: true,
-      startLife: new IntervalValue(0.5, 0.95), startSpeed: new IntervalValue(16 * k, 42 * k), startSize: new IntervalValue(22 * k, 40 * k),
+      startLife: new IntervalValue(0.5, 0.95), startSpeed: new IntervalValue(14 * k, 32 * k), startSize: new IntervalValue(22 * k, 40 * k),
       startRotation: new IntervalValue(-0.25, 0.25), startColor: new ConstantColor(new QVector4(1, 0.9, 0.6, 1)),
       emissionOverTime: new ConstantValue(230 * density * Math.min(1.4, k)),
       shape: new MeshSurfaceEmitter(fireSeeds),
       behaviors: [
-        new ApplyForce(v3(0, 1, 0), new ConstantValue(70 * k)),
+        new ApplyForce(v3(0, 1, 0), new ConstantValue(42 * k)),   // short tongues: they stop under the "presents" line above the title
         new ColorOverLife(new Gradient(
           [[v3(1, 0.86, 0.45), 0], [v3(1, 0.5, 0.1), 0.35], [v3(0.75, 0.14, 0.02), 0.75], [v3(0.25, 0.03, 0.01), 1]],
           [[0, 0], [0.6, 0.16], [0.36, 0.55], [0, 1]])),
